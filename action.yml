@@ -1,0 +1,82 @@
+name: AWS Bedrock Code Review Action
+description: >
+  AI-assisted GitHub PR code review powered by AWS Bedrock. A maintained
+  fork of eple0329/AWSBedrock-CodeReview with fixes for current Bedrock
+  Anthropic models (inference profile IDs, temperature/top_p conflicts) —
+  see NOTICE.md.
+inputs:
+  # AWS
+  aws-access-key-id:
+    description: 'AWS Access Key ID'
+    required: true
+  aws-secret-access-key:
+    description: 'AWS Secret Access Key'
+    required: true
+  aws-region:
+    description: 'AWS Region'
+    required: true
+  # GitHub
+  github-token:
+    description: 'GitHub Token'
+    required: true
+  # Bedrock
+  model:
+    description: 'Bedrock Model Id or inference profile ID (e.g. "us.anthropic.claude-haiku-4-5-20251001-v1:0")'
+    required: false
+    default: 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+  max-tokens:
+    description: 'Max Tokens (In AWS Bedrock, 3072 is the maximum value)'
+    required: false
+    default: 1000
+  # Custom
+  prompt:
+    description: 'Bedrock Prompt'
+    required: false
+    default: 'You are a senior backend engineer. Below there is a code diff please help me do a code review.\n\nFormat:\n- Numbering issues, specify file. Use markdown, headers, code blocks.\n- Suggest improvements/examples.\n- Be constructive.\n\nProvide detailed review.'
+  language:
+    description: 'Response Language'
+    required: false
+    default: 'English'
+  title:
+    description: 'Title'
+    required: false
+    default: '[Code Review]'
+  temperature:
+    description: 'Model Temperature'
+    required: false
+    default: 0.5
+  top-p:
+    description: 'Model Top P (ignored for Anthropic models — see NOTICE.md)'
+    required: false
+    default: 0.9
+  home-directory:
+    description: 'Home Directory In Your Project'
+    required: false
+    default: ''
+
+branding:
+  icon: 'check-circle'
+  color: white
+
+runs:
+  using: 'composite'
+  steps:
+    - run: pip install -r ${{ github.action_path }}/requirements.txt
+      shell: bash
+    - run: python ${{ github.action_path }}/main.py
+      shell: bash
+      env:
+        INPUT_AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        INPUT_AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+        INPUT_AWS_REGION: ${{ inputs.aws-region }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_GITHUB_REPOSITORY: ${{ github.repository }}
+        INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_MAX_TOKENS: ${{ inputs.max-tokens }}
+        INPUT_PROMPT: ${{ inputs.prompt }}
+        INPUT_LANGUAGE: ${{ inputs.language }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_TEMPERATURE: ${{ inputs.temperature }}
+        INPUT_TOP_P: ${{ inputs.top-p }}
+        INPUT_HOME_DIRECTORY: ${{ inputs.home-directory }}
