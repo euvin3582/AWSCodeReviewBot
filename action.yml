@@ -2,8 +2,9 @@ name: AWS Bedrock Code Review Action
 description: >
   AI-assisted GitHub PR code review powered by AWS Bedrock. A maintained
   fork of eple0329/AWSBedrock-CodeReview with fixes for current Bedrock
-  Anthropic models (inference profile IDs, temperature/top_p conflicts) —
-  see NOTICE.md.
+  Anthropic models (inference profile IDs, temperature/top_p conflicts),
+  plus support for OpenAI models via bedrock-mantle and an automatic
+  fallback model — see NOTICE.md.
 inputs:
   # AWS
   aws-access-key-id:
@@ -21,13 +22,31 @@ inputs:
     required: true
   # Bedrock
   model:
-    description: 'Bedrock Model Id or inference profile ID (e.g. "us.anthropic.claude-haiku-4-5-20251001-v1:0")'
+    description: >
+      Primary Bedrock model ID or inference profile ID. Accepts Anthropic
+      (e.g. "us.anthropic.claude-haiku-4-5-20251001-v1:0"), Amazon Titan,
+      or OpenAI (e.g. "openai.gpt-5.6-terra") model IDs. OpenAI models are
+      called through the separate bedrock-mantle endpoint automatically —
+      see NOTICE.md.
+    required: false
+    default: 'openai.gpt-5.6-terra'
+  fallback-model:
+    description: >
+      Model ID to retry with if the primary `model` call fails for any
+      reason (auth, throttling, model unavailable, or an empty/incomplete
+      response). Leave empty to disable fallback. Can mix providers, e.g.
+      an OpenAI primary with an Anthropic fallback.
     required: false
     default: 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
   max-tokens:
-    description: 'Max Tokens (In AWS Bedrock, 3072 is the maximum value)'
+    description: >
+      Max output tokens. For Anthropic, 3072 is Bedrock's ceiling for this
+      action's request shape. For OpenAI models, this maps to
+      max_output_tokens and also covers the model's internal reasoning
+      tokens — too low a value can make the model spend its whole budget
+      reasoning and return no visible text (see NOTICE.md).
     required: false
-    default: 1000
+    default: 3072
   # Custom
   prompt:
     description: 'Bedrock Prompt'
@@ -73,6 +92,7 @@ runs:
         INPUT_GITHUB_REPOSITORY: ${{ github.repository }}
         INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}
         INPUT_MODEL: ${{ inputs.model }}
+        INPUT_FALLBACK_MODEL: ${{ inputs.fallback-model }}
         INPUT_MAX_TOKENS: ${{ inputs.max-tokens }}
         INPUT_PROMPT: ${{ inputs.prompt }}
         INPUT_LANGUAGE: ${{ inputs.language }}
