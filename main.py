@@ -1,6 +1,8 @@
 import re
 
 import botocore.session, botocore.exceptions
+from botocore.awsrequest import AWSRequest
+from botocore.auth import SigV4Auth
 import requests
 import json
 import os
@@ -17,6 +19,7 @@ aws_region = os.environ['INPUT_AWS_REGION']
 
 # Bedrock 환경 변수
 model = os.environ['INPUT_MODEL']
+fallback_model = os.environ.get('INPUT_FALLBACK_MODEL', '').strip()
 max_tokens = int(os.environ['INPUT_MAX_TOKENS'])
 
 # 추가 환경 변수
@@ -95,25 +98,24 @@ def detect_provider(model_id):
         return 'anthropic'
     if 'amazon' in segments:
         return 'amazon'
+    if 'openai' in segments:
+        return 'openai'
     return segments[0]
 
 
-def analyze_with_bedrock(diff):
-    # botocore 세션 생성
+def invoke_bedrock_runtime(model_id, diff):
+    """Call a model through the bedrock-runtime InvokeModel API.
+
+    Covers Anthropic (via inference profile or bare model ID) and Amazon
+    Titan models. Raises on any failure instead of swallowing it, so
+    callers can decide whether to fall back to another model.
+    """
     session = botocore.session.get_session()
-
-    session.set_credentials(
-        access_key=access_key,
-        secret_key=secret_key
-    )
-
-    # Bedrock 런타임 클라이언트 생성
+    session.set_credentials(access_key=access_key, secret_key=secret_key)
     client = session.create_client('bedrock-runtime', region_name=aws_region)
 
     system_prompt = input_prompt + f" Please answer to {language}. "
-
-    provider = detect_provider(model)
-    request_body = ""
+    provider = detect_provider(model_id)
 
     if provider == 'anthropic':
         # Claude Sonnet 4.5 / Haiku 4.5 and later reject requests that set
@@ -133,8 +135,7 @@ def analyze_with_bedrock(diff):
                 }
             ]
         })
-
-    if provider == 'amazon':
+    elif provider == 'amazon':
         request_body = json.dumps({
             "inputText": system_prompt + diff,
             "textGenerationConfig": {
@@ -143,45 +144,147 @@ def analyze_with_bedrock(diff):
                 "maxTokenCount": max_tokens
             }
         })
+    else:
+        raise ValueError(f"invoke_bedrock_runtime does not support provider {provider!r} for model {model_id!r}")
 
-    try:
-        # Bedrock 모델 호출
-        response = client.invoke_model(
-            modelId=model,
-            contentType='application/json',
-            accept='application/json',
-            body=request_body
+    response = client.invoke_model(
+        modelId=model_id,
+        contentType='application/json',
+        accept='application/json',
+        body=request_body
+    )
+
+    response_body = b''
+    for event in response['body']:
+        response_body += event
+
+    # 바이트 문자열을 일반 문자열로 디코딩
+    response_json = json.loads(response_body.decode('utf-8', errors='ignore'))
+
+    if provider == 'anthropic':
+        return response_json['content'][0]['text']
+
+    # provider == 'amazon'
+    error = response_json.get("error")
+    if error is not None:
+        raise RuntimeError(f"Text generation error. Error is {error}")
+
+    print(f"Input token count: {response_json['inputTextTokenCount']}")
+    for result in response_json['results']:
+        print(f"Token count: {result['tokenCount']}")
+        return result['outputText']
+
+    raise RuntimeError("Amazon Titan response contained no results")
+
+
+def invoke_bedrock_mantle(model_id, diff):
+    """Call an OpenAI model through the bedrock-mantle Responses API.
+
+    OpenAI models on Bedrock (GPT-5.4/5.5/5.6 and later) are NOT reachable
+    through bedrock-runtime's InvokeModel at all — they're only available
+    on the separate bedrock-mantle endpoint, which speaks the OpenAI
+    Responses API (POST /openai/v1/responses) rather than Bedrock's native
+    request/response shape. See NOTICE.md for how this was confirmed.
+
+    bedrock-mantle has no boto3/botocore service model as of this writing,
+    so requests are hand-signed with SigV4 and sent over plain HTTPS
+    instead of going through a generated client. IAM requires
+    bedrock-mantle:CreateInference on the project ARN (not
+    bedrock:InvokeModel on a model/inference-profile ARN) — see
+    AWSCloudFormation/github-actions-bedrock-review/ in the dogvatar-dog
+    org for the policy this needs.
+
+    Note: GPT-5.6 Terra rejects a `temperature` parameter outright
+    (`unsupported_parameter`), unlike the Anthropic temperature/top_p
+    conflict — so this path sends neither `temperature` nor `top_p`, only
+    `max_output_tokens`. If `max_output_tokens` is too small, the model can
+    spend its entire budget on internal reasoning and return zero message
+    text with `status: "incomplete"` and no error — that's treated as a
+    failure below so it triggers fallback instead of posting an empty
+    review.
+    """
+    session = botocore.session.get_session()
+    session.set_credentials(access_key=access_key, secret_key=secret_key)
+    credentials = session.get_credentials().get_frozen_credentials()
+
+    system_prompt = input_prompt + f" Please answer to {language}. "
+    url = f"https://bedrock-mantle.{aws_region}.api.aws/openai/v1/responses"
+    body = json.dumps({
+        "model": model_id,
+        "input": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": diff},
+        ],
+        "max_output_tokens": max_tokens,
+        "store": False,
+    })
+
+    request = AWSRequest(method="POST", url=url, data=body, headers={"Content-Type": "application/json"})
+    SigV4Auth(credentials, "bedrock-mantle", aws_region).add_auth(request)
+    prepared = request.prepare()
+
+    response = requests.post(url, data=body, headers=dict(prepared.headers))
+    response_json = response.json()
+
+    if response.status_code >= 400 or response_json.get("error"):
+        raise RuntimeError(f"bedrock-mantle error ({response.status_code}): {response_json.get('error') or response.text}")
+
+    message_items = [item for item in response_json.get("output", []) if item.get("type") == "message"]
+    if not message_items:
+        raise RuntimeError(
+            f"bedrock-mantle returned no message output "
+            f"(status={response_json.get('status')!r}, "
+            f"incomplete_details={response_json.get('incomplete_details')!r}); "
+            f"increase max-tokens if this is due to reasoning-token overhead"
         )
 
-        response_body = b''
-        for event in response['body']:
-            response_body += event
+    content = message_items[0].get("content", [])
+    text_parts = [part.get("text", "") for part in content if part.get("type") == "output_text"]
+    result_text = "".join(text_parts).strip()
+    if not result_text:
+        raise RuntimeError("bedrock-mantle message item contained no output_text content")
 
-        # 바이트 문자열을 일반 문자열로 디코딩
-        response_str = response_body.decode('utf-8', errors='ignore')
-        response_json = json.loads(response_str)
+    return result_text
 
-        if provider == 'anthropic':
-            # content의 text 추출
-            content_text = response_json['content'][0]['text']
 
-            return content_text
+def invoke_model(model_id, diff):
+    """Dispatch to the right Bedrock endpoint based on the model's provider."""
+    provider = detect_provider(model_id)
+    if provider == 'openai':
+        return invoke_bedrock_mantle(model_id, diff)
+    return invoke_bedrock_runtime(model_id, diff)
 
-        if provider == 'amazon':
-            finish_reason = response_json.get("error")  # AWS 에러
-            if finish_reason is not None:
-                raise f"Text generation error. Error is {finish_reason}"
 
-            print(f"Input token count: {response_json['inputTextTokenCount']}")
-            for result in response_json['results']:
-                print(f"Token count: {result['tokenCount']}")
-                return result['outputText']
+def analyze_with_bedrock(diff):
+    """Run the code review, trying `model` first and falling back to
+    `fallback_model` (if configured) on any failure — network errors,
+    auth/permission errors, throttling, or a response with no usable text.
 
-    except botocore.exceptions.ClientError as error:
-        print("An error occurred:", error)
+    Returns the review text, or None if every configured model failed.
+    """
+    try:
+        return invoke_model(model, diff)
+    except Exception as error:
+        print(f"Primary model {model!r} failed: {error}")
 
-    except (KeyError, IndexError) as e:
-        print("An error occurred:", e)
+        if not fallback_model:
+            print("No fallback-model configured; giving up.")
+            return None
+
+        print(f"Falling back to {fallback_model!r}...")
+        try:
+            review = invoke_model(fallback_model, diff)
+            # Flag in the comment itself that the primary model failed, so a
+            # maintainer seeing an unexpected style/quality shift knows why
+            # rather than silently wondering.
+            return (
+                f"_Note: the primary model (`{model}`) failed, so this review "
+                f"was generated by the fallback model (`{fallback_model}`)._\n\n"
+                + review
+            )
+        except Exception as fallback_error:
+            print(f"Fallback model {fallback_model!r} also failed: {fallback_error}")
+            return None
 
 
 def post_review(comment):
