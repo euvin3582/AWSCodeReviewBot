@@ -1,5 +1,10 @@
 # Attribution and upstream fixes
 
+> **Note:** This project was renamed from `AWSCodeReviewBot` to `CriticAI` in
+> July 2026 (repo: `euvin3582/CriticAI`, org fork: `dogvatar-dog/CriticAI`).
+> Dated entries below that mention `AWSCodeReviewBot` describe events from
+> before the rename and are left unchanged as a historical record.
+
 This project started as a fork of
 [eple0329/AWSBedrock-CodeReview](https://github.com/eple0329/AWSBedrock-CodeReview)
 v1.1.3 (commit `8be98f7`), MIT licensed, Copyright (c) 2024 Ga Dong Sik.
