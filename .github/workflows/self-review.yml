@@ -1,15 +1,12 @@
 name: Bedrock Code Review
 
 # Dogfooding: this repo reviews its own PRs with the action it ships,
-# the same way every other repo in dogvatar-dog does.
-#
-# TEMPORARY: pinned to this feature branch (not @v1) so this PR's own
-# review run exercises the new Gemini/CodeRabbit-style render_comment()
-# and update-in-place code with a real Bedrock call, before the v1 tag
-# gets moved to include it. Switch this to `@v1` in the same PR, right
-# before merging — see NOTICE.md's "Gemini/CodeRabbit-style comment
-# format" entry for why this needed a live check rather than static
-# verification alone.
+# the same way every other repo in dogvatar-dog does. Pinned to @v1 like
+# everywhere else, not a branch ref — an earlier draft of this workflow
+# pointed at a feature branch to get a live test run before v1 existed
+# with this code; see NOTICE.md for that history and why a mutable
+# branch ref here (with real AWS credentials in play) was flagged as its
+# own finding by this bot's first live self-review run.
 #
 # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION are org-level
 # GitHub Actions secrets (dogvatar-dog org, Settings > Secrets and
@@ -36,7 +33,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: AWS Bedrock Code Review Action
-        uses: dogvatar-dog/AWSCodeReviewBot@feat/gemini-coderabbit-style-fork
+        uses: dogvatar-dog/AWSCodeReviewBot@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

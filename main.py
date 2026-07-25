@@ -374,7 +374,12 @@ def find_existing_comment():
         "Authorization": f"Bearer {github_token}",
         "Accept": "application/vnd.github+json"
     }
-    params = {"per_page": 100}
+    # Newest-first: if a duplicate marker comment ever exists (e.g. from a
+    # past run where the ownership/pagination lookup itself failed) we
+    # want to keep updating the most recent one rather than an old,
+    # possibly-stale one that happens to sort first under the API's
+    # oldest-first default.
+    params = {"per_page": 100, "sort": "created", "direction": "desc"}
 
     try:
         while api_url:
