@@ -1,4 +1,4 @@
-# AWS Bedrock Code Review Action
+# CriticAI
 
 AI-assisted GitHub PR code review powered by AWS Bedrock, styled after
 [Gemini Code Assist](https://developers.google.com/gemini-code-assist/docs/review-github-code)
@@ -60,8 +60,8 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - name: AWS Bedrock Code Review Action
-        uses: euvin3582/AWSCodeReviewBot@main
+      - name: CriticAI Code Review
+        uses: euvin3582/CriticAI@main
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
