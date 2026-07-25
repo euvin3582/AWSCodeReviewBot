@@ -32,8 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: AWS Bedrock Code Review Action
-        uses: dogvatar-dog/AWSCodeReviewBot@v1
+      - name: CriticAI Code Review
+        uses: dogvatar-dog/CriticAI@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
