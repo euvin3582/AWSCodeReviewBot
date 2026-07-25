@@ -324,10 +324,8 @@ def render_comment(review_text, head_sha):
     """Wrap the model's raw review text in the shared comment chrome.
 
     Modeled on how Gemini Code Assist and CodeRabbit format their GitHub
-    PR comments: a bot-branded header line, a collapsible details block
-    around the bulk of the content (Gemini collapses its per-file
-    walkthrough the same way; CodeRabbit collapses its detailed findings
-    behind a summary), and a small italic footer identifying the bot,
+    PR comments: a bot-branded header line naming the commit reviewed, and
+    a small footer identifying the bot and linking back to this repo,
     matching both tools' convention of a one-line attribution/help footer.
     The model is instructed (via the default `prompt` in action.yml) to
     produce a "## Summary" section followed by numbered findings — this
@@ -355,21 +353,88 @@ def find_existing_comment():
     — the same behavior Gemini Code Assist and CodeRabbit use on GitHub.
     Returns the comment ID, or None if there isn't one yet (or the lookup
     fails, in which case we fall back to posting a new comment).
+
+    Two things beyond just matching COMMENT_MARKER, found by this action's
+    own bot dogfooding itself on dogvatar-dog/AWSCodeReviewBot#4:
+
+    1. Paginates through *all* issue comments, not just the first page.
+       GitHub returns issue comments oldest-first by default, so on a PR
+       with 100+ prior comments, a naive single-page fetch would never see
+       this action's own (more recent) marker comment and would post a
+       duplicate on every run instead of updating it.
+    2. Only matches a comment actually authored by this action's own
+       identity (github-actions[bot] for the default GITHUB_TOKEN; the PAT
+       owner's login for a custom github-token). Otherwise any PR
+       participant could post a comment containing COMMENT_MARKER and
+       this action would try to PATCH a comment it doesn't own — which
+       fails outright and drops the review instead of publishing it.
     """
     api_url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
     headers = {
         "Authorization": f"Bearer {github_token}",
         "Accept": "application/vnd.github+json"
     }
+    # Newest-first: if a duplicate marker comment ever exists (e.g. from a
+    # past run where the ownership/pagination lookup itself failed) we
+    # want to keep updating the most recent one rather than an old,
+    # possibly-stale one that happens to sort first under the API's
+    # oldest-first default.
+    params = {"per_page": 100, "sort": "created", "direction": "desc"}
+
     try:
-        response = requests.get(api_url, headers=headers, params={"per_page": 100})
-        response.raise_for_status()
-        for existing_comment in response.json():
-            if COMMENT_MARKER in (existing_comment.get("body") or ""):
-                return existing_comment["id"]
+        while api_url:
+            response = requests.get(api_url, headers=headers, params=params)
+            response.raise_for_status()
+            for existing_comment in response.json():
+                body = existing_comment.get("body") or ""
+                author = (existing_comment.get("user") or {}).get("login") or ""
+                if COMMENT_MARKER in body and author == bot_identity_login():
+                    return existing_comment["id"]
+            # Only the first request needs `params`; subsequent pages come
+            # from the fully-qualified `next` link already containing them.
+            params = None
+            api_url = response.links.get("next", {}).get("url")
     except requests.exceptions.RequestException as e:
         print(f"Warning: could not list existing comments, will post a new one: {e}")
     return None
+
+
+_bot_identity_login_cache = None
+
+
+def bot_identity_login():
+    """Resolve the GitHub login this action is posting as, so
+    find_existing_comment() can require ownership instead of trusting a
+    spoofable body marker alone.
+
+    `GET /user` (what a personal-access-token setup would use) returns 404
+    for the default `${{ secrets.GITHUB_TOKEN }}` — Actions installation
+    tokens aren't tied to a user account. Detect that case up front rather
+    than treating the 404 as a generic failure: the default token's
+    identity is always the deterministic `github-actions[bot]` login, the
+    same identity GitHub itself displays for comments made with it.
+    """
+    global _bot_identity_login_cache
+    if _bot_identity_login_cache is not None:
+        return _bot_identity_login_cache
+
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json"
+    }
+    try:
+        response = requests.get("https://api.github.com/user", headers=headers)
+        if response.status_code == 404:
+            # Installation token (the default GITHUB_TOKEN case).
+            _bot_identity_login_cache = "github-actions[bot]"
+        else:
+            response.raise_for_status()
+            _bot_identity_login_cache = response.json()["login"]
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: could not resolve bot identity, assuming github-actions[bot]: {e}")
+        _bot_identity_login_cache = "github-actions[bot]"
+
+    return _bot_identity_login_cache
 
 
 def post_review(comment, head_sha):

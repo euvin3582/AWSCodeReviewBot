@@ -191,16 +191,63 @@ invocation logic above:
    a plain italic line) is now a blockquote admonition (`> ⚠️ **Fallback
    model used**...`) to read consistently with the rest of the format.
 
-Verified locally: `render_comment()` produces valid markdown with and
-without a resolved head SHA, and the hidden marker round-trips (present
-in rendered output, matched by `find_existing_comment()`'s substring
-check). Not verified against a live PR in this pass — the structured
-Findings/severity-tag prompt has not been confirmed to produce
-consistently well-formed output from either the primary (GPT-5.6 Terra)
-or fallback (Claude Haiku 4.5) model; if either model doesn't reliably
-follow the requested heading structure, the comment will still render
-(it's just markdown) but may not match the Summary/Walkthrough/Findings
-shape exactly on every PR.
+Verified against a live PR: this repo now runs its own action against its
+own PRs (see `.github/workflows/self-review.yml`), and its first live run
+(against dogvatar-dog/AWSCodeReviewBot#4, the PR carrying this exact
+change) produced correctly-structured Summary/Walkthrough/Findings output
+from the primary model (GPT-5.6 Terra) with real severity tags and
+per-finding suggested fixes — confirming the structured prompt works in
+practice, not just in the abstract.
+
+That same live run also **found three real bugs in this change**, which
+were fixed in response before this landed (all in `find_existing_comment()`
+unless noted):
+
+1. 🔴 *Security* — the dogfooding workflow initially pointed
+   `uses: dogvatar-dog/AWSCodeReviewBot@feat/gemini-coderabbit-style-fork`
+   at a mutable branch while passing real AWS credentials, instead of a
+   pinned tag — needed at the time because `v1` didn't yet include the
+   code being tested. The bot's *second* live self-review run (after the
+   pagination/ownership fixes below, still on the branch ref) caught that
+   this was still unresolved and flagged it again as a Major finding, and
+   noted this document had prematurely described it as already fixed.
+   Resolved in the same PR, immediately before merge: switched
+   `self-review.yml` to `@v1` and moved the `v1` tag itself to this
+   commit as part of merging (see "Retagging v1" below) — so by the time
+   `@v1` was live, it was never pointing at a branch that could still be
+   pushed to.
+2. 🟠 *Reliability* — the existing-comment lookup only fetched the first
+   100 issue comments. GitHub returns issue comments oldest-first, so on
+   a PR with 100+ prior comments this action's own (newer) marker comment
+   would never be found, silently breaking the one-comment-per-PR
+   guarantee and posting a duplicate on every run instead. Fixed by
+   following the `Link: rel="next"` pagination header until either the
+   marker is found or there are no more pages.
+3. 🟠 *Reliability* — the marker match trusted the comment body alone.
+   Any PR participant could post a comment containing
+   `<!-- awscodereviewbot:review -->` and this action would try to `PATCH`
+   a comment it doesn't own, which fails outright and drops the review
+   instead of publishing it. Fixed with a new `bot_identity_login()`
+   helper that also matches the comment author against this action's own
+   identity — `github-actions[bot]` for the default `GITHUB_TOKEN`
+   (`GET /user` 404s for installation tokens, so that 404 is treated as
+   the signal to use the deterministic bot login rather than a generic
+   failure), or the token owner's actual login for a custom
+   `github-token` input.
+
+Findings 2 and 3 were unit-tested locally with mocked HTTP responses
+(pagination across two pages, a spoofed marker from a mismatched author
+correctly ignored, and the 404-to-`github-actions[bot]` fallback) before
+being pushed back into the same PR that had already been live-reviewed.
+Pushing that fix triggered a second live self-review run, which confirmed
+in the rendered comment (same comment ID, `updated_at` advanced instead
+of a second comment appearing — the update-in-place behavior working
+correctly end-to-end) that findings 2 and 3 no longer reproduced, correctly
+re-flagged finding 1 as still open (see above), and raised one additional
+🟡 Minor finding: if a duplicate marker comment ever existed,
+`find_existing_comment()` would keep updating the oldest one under the
+GitHub API's default oldest-first ordering rather than the most recent.
+Fixed by requesting `sort=created&direction=desc` explicitly.
 
 ## Maintenance
 
