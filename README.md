@@ -1,6 +1,10 @@
 # AWS Bedrock Code Review Action
 
-AI-assisted GitHub PR code review powered by AWS Bedrock.
+AI-assisted GitHub PR code review powered by AWS Bedrock, styled after
+[Gemini Code Assist](https://developers.google.com/gemini-code-assist/docs/review-github-code)
+and [CodeRabbit](https://www.coderabbit.ai/): a Summary / Walkthrough /
+severity-tagged Findings comment that gets updated in place on every push
+instead of piling up a new comment each time.
 
 This is a maintained fork of
 [eple0329/AWSBedrock-CodeReview](https://github.com/eple0329/AWSBedrock-CodeReview),
@@ -9,6 +13,36 @@ profile IDs, `temperature`/`top_p` conflicts) and OpenAI (via the separate
 `bedrock-mantle` endpoint) — plus an automatic fallback model if the
 primary one fails. See [NOTICE.md](NOTICE.md) for the full explanation and
 attribution.
+
+## Comment format
+
+The posted PR comment follows a fixed structure, driven by the default
+`prompt` (see `action.yml`):
+
+- **Summary** — 1-3 sentences on what the PR does.
+- **Walkthrough** — a bullet list of the key changes, grouped by file or
+  concern.
+- **Findings** — a numbered list of concrete issues, each tagged with a
+  severity (🔴 Critical, 🟠 Major, 🟡 Minor, 🔵 Nit) and a category (e.g.
+  *Security*, *Performance*), with a fenced-code suggested fix where one
+  applies. Omitted entirely if there's nothing to flag.
+- **Suggested follow-ups** — optional non-blocking nits, omitted if empty.
+
+The comment itself is wrapped in shared chrome: a bot-branded header
+naming the commit SHA reviewed, and a footer crediting AWS Bedrock and
+linking back to this repo — matching the header/footer convention both
+Gemini Code Assist and CodeRabbit use on GitHub.
+
+**One comment per PR, updated in place.** Every run checks for a comment
+this action already posted on the same PR (via a hidden HTML marker) and
+edits it instead of posting a new one, the same behavior Gemini Code
+Assist and CodeRabbit use. This means pushing new commits refreshes the
+existing review rather than creating comment clutter.
+
+Overriding the `prompt` input replaces this structure entirely — the
+wrapper (header/footer/update-in-place) still applies, but section
+headings and severity tags are only present if your custom prompt asks
+for them.
 
 ## How to use
 
@@ -114,9 +148,9 @@ for details. For `bedrock-mantle`, scope to your project ARN, e.g.
 | `model` | `openai.gpt-5.6-terra` | Primary Bedrock model ID or inference profile ID. Anthropic, Amazon Titan, or OpenAI. |
 | `fallback-model` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Retried automatically if `model` fails for any reason. Set to `''` to disable. |
 | `max-tokens` | `3072` | Max output tokens. For OpenAI models this also covers internal reasoning tokens — see [NOTICE.md](NOTICE.md) for a truncation pitfall if set too low. |
-| `prompt` | see `action.yml` | Custom instructions for the reviewer persona/focus. |
+| `prompt` | see `action.yml` | Review instructions. The default asks for the Gemini/CodeRabbit-style Summary/Walkthrough/Findings structure described above — see [Comment format](#comment-format). |
 | `language` | `English` | Response language. |
-| `title` | `[Code Review]` | Header used on the posted PR comment. |
+| `title` | `Code Review` | Header line used on the posted PR comment (a 🤖 emoji, commit SHA, and attribution footer are added automatically). |
 | `temperature` | `0.5` | Model temperature. Ignored for OpenAI models — see [NOTICE.md](NOTICE.md). |
 | `top-p` | `0.9` | Model top-p. Ignored for Anthropic and OpenAI models — see [NOTICE.md](NOTICE.md). |
 | `home-directory` | `''` | Restrict review to files under this path. |
