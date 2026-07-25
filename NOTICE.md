@@ -161,6 +161,47 @@ real review with the provenance note, both models failing gracefully to
 `None`, and fallback correctly staying disabled when `fallback-model` is
 empty.
 
+## Gemini/CodeRabbit-style comment format and update-in-place (added 2026-07-24)
+
+Requested explicitly: make the posted review "look and feel similar to
+Gemini [Code Assist] and a little like CodeRabbit." Two independent
+changes, both in `main.py`/`action.yml`, neither touching the Bedrock
+invocation logic above:
+
+1. **Structured comment content.** The default `prompt` in `action.yml`
+   now asks the model for a fixed markdown structure — `## Summary`, `##
+   Walkthrough`, `## Findings` (numbered, severity-tagged: 🔴
+   Critical/🟠 Major/🟡 Minor/🔵 Nit, with a category and an optional
+   fenced-code fix per finding), and an optional `## Suggested
+   follow-ups`. This mirrors Gemini Code Assist's PR summary +
+   per-file walkthrough and CodeRabbit's severity-tagged, collapsible
+   findings list. This is a prompt change, not a parsing change —
+   `main.py` does not parse or validate the model's markdown structure,
+   so a custom `prompt` input can still produce free-form output; only
+   the default prompt requests this shape.
+2. **Comment chrome + update-in-place.** New `render_comment()` wraps
+   whatever text the model returns in a shared header (🤖 title + commit
+   SHA reviewed) and footer (Bedrock attribution + link to this repo).
+   New `find_existing_comment()` scans the PR's existing comments for a
+   hidden `<!-- awscodereviewbot:review -->` marker from a prior run and,
+   if found, `post_review()` `PATCH`es that comment instead of `POST`ing
+   a new one. Previously every push posted an additional comment,
+   unlike Gemini Code Assist and CodeRabbit, which both edit one review
+   comment per PR across pushes. The fallback-model notice (previously
+   a plain italic line) is now a blockquote admonition (`> ⚠️ **Fallback
+   model used**...`) to read consistently with the rest of the format.
+
+Verified locally: `render_comment()` produces valid markdown with and
+without a resolved head SHA, and the hidden marker round-trips (present
+in rendered output, matched by `find_existing_comment()`'s substring
+check). Not verified against a live PR in this pass — the structured
+Findings/severity-tag prompt has not been confirmed to produce
+consistently well-formed output from either the primary (GPT-5.6 Terra)
+or fallback (Claude Haiku 4.5) model; if either model doesn't reliably
+follow the requested heading structure, the comment will still render
+(it's just markdown) but may not match the Summary/Walkthrough/Findings
+shape exactly on every PR.
+
 ## Maintenance
 
 Bedrock's model lineup changes over time (see
