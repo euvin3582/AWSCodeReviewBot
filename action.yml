@@ -1,4 +1,4 @@
-name: AWS Bedrock Code Review Action
+name: CriticAI
 description: >
   AI-assisted GitHub PR code review powered by AWS Bedrock. A maintained
   fork of eple0329/AWSBedrock-CodeReview with fixes for current Bedrock
