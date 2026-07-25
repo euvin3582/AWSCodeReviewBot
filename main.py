@@ -337,12 +337,12 @@ def render_comment(review_text, head_sha):
     return (
         f"{COMMENT_MARKER}\n"
         f"## 🤖 {title}\n"
-        f"<sub>AWS Bedrock Code Review Bot{reviewed_at}</sub>\n\n"
+        f"<sub>CriticAI{reviewed_at}</sub>\n\n"
         f"---\n\n"
         f"{review_text}\n\n"
         f"---\n"
         f"<sub>🔎 Powered by AWS Bedrock · "
-        f"[dogvatar-dog/AWSCodeReviewBot](https://github.com/dogvatar-dog/AWSCodeReviewBot) · "
+        f"[dogvatar-dog/CriticAI](https://github.com/dogvatar-dog/CriticAI) · "
         f"Reply in this thread or push a new commit to request another look.</sub>"
     )
 
