@@ -8,7 +8,7 @@ import sys
 from criticai.config import Config
 from criticai.context import gather_context
 from criticai.diff import filter_diff, build_position_map, find_position, extract_changed_files
-from criticai.github import GitHubClient, extract_previous_findings
+from criticai.github import GitHubClient, extract_previous_findings, extract_reviewed_sha
 from criticai.inline import parse_model_output
 from criticai.renderer import render_comment
 from criticai.review import ReviewEngine
@@ -22,8 +22,16 @@ def main() -> None:
     github = GitHubClient(config)
     engine = ReviewEngine(config)
 
-    # Fetch PR diff
-    raw_diff = github.get_pr_diff()
+    # Fetch PR diff (incremental if this is a re-review)
+    existing_id, existing_body = github.find_existing_comment()
+    last_reviewed_sha = extract_reviewed_sha(existing_body)
+
+    if last_reviewed_sha:
+        print(f"Previous review found (reviewed at {last_reviewed_sha}) — trying incremental diff.")
+        raw_diff = github.get_pr_diff(base_sha=last_reviewed_sha)
+    else:
+        raw_diff = github.get_pr_diff()
+
     diff = filter_diff(raw_diff, config.home_directory)
 
     # Fetch head SHA for labeling the comment
@@ -32,9 +40,6 @@ def main() -> None:
     # Gather codebase context (referenced files for cross-file awareness)
     changed_files = extract_changed_files(diff)
     context = gather_context(diff, changed_files, github, head_sha)
-
-    # Check for existing review comment (update-in-place)
-    existing_id, existing_body = github.find_existing_comment()
 
     # Extract prior findings for resolution tracking
     previous_findings = extract_previous_findings(existing_body)

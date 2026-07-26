@@ -142,33 +142,174 @@ def _handle_ignore(github, config, comment_id):
 
 
 def _handle_fix(github, config, command, event):
-    """Attempt to generate and push a fix for the finding."""
-    # Get the finding context from the parent comment
+    """Generate and push a fix commit for the finding.
+
+    Parses the suggestion block from the parent inline comment, fetches
+    the target file from the PR branch, applies the replacement, and
+    commits it directly to the branch.
+    """
+    import re
+    import base64
+    import requests
+
+    comment_id = event["comment"]["id"]
+
+    # Get the parent comment that contains the finding + suggestion
     in_reply_to = event.get("comment", {}).get("in_reply_to_id")
     parent_body = ""
+    parent_path = ""
+    parent_line = None
 
     if in_reply_to:
-        import requests
-        url = f"https://api.github.com/repos/{config.repository}/issues/comments/{in_reply_to}"
+        # Try pull request review comment first (inline comments)
+        url = f"https://api.github.com/repos/{config.repository}/pulls/comments/{in_reply_to}"
         resp = requests.get(url, headers={
             "Authorization": f"Bearer {config.github_token}",
             "Accept": "application/vnd.github+json",
         })
         if resp.status_code == 200:
-            parent_body = resp.json().get("body", "")
+            data = resp.json()
+            parent_body = data.get("body", "")
+            parent_path = data.get("path", "")
+            parent_line = data.get("original_line") or data.get("line")
+        else:
+            # Try issue comment
+            url = f"https://api.github.com/repos/{config.repository}/issues/comments/{in_reply_to}"
+            resp = requests.get(url, headers={
+                "Authorization": f"Bearer {config.github_token}",
+                "Accept": "application/vnd.github+json",
+            })
+            if resp.status_code == 200:
+                parent_body = resp.json().get("body", "")
 
     if not parent_body:
-        _reply(github, config, event["comment"]["id"],
+        _reply(github, config, comment_id,
                "I need more context to generate a fix. Please reply to a specific "
                "inline finding comment with `@criticai fix`.")
         return
 
-    # For now, explain that auto-fix is coming soon with the fix suggestion
-    _reply(github, config, event["comment"]["id"],
-           "🔧 **Auto-fix** — I've identified the fix in my suggestion block above. "
-           "Click **Apply suggestion** on the inline comment to commit it directly, "
-           "or I can push a fix commit in a future update.\n\n"
-           "_Auto-push of fix commits is coming soon._")
+    # Extract the suggestion block from the parent comment
+    suggestion_match = re.search(
+        r"```suggestion\n(.*?)\n```",
+        parent_body,
+        re.DOTALL,
+    )
+
+    if not suggestion_match:
+        # No suggestion block — ask the model to generate a fix
+        _generate_and_push_fix(github, config, event, parent_body, parent_path, parent_line)
+        return
+
+    suggested_code = suggestion_match.group(1)
+
+    if not parent_path or not parent_line:
+        _reply(github, config, comment_id,
+               "Could not determine which file/line to fix. Please use "
+               "'Apply suggestion' on the inline comment instead.")
+        return
+
+    # Get the PR branch name
+    pr_url = f"https://api.github.com/repos/{config.repository}/pulls/{config.pr_number}"
+    pr_resp = requests.get(pr_url, headers={
+        "Authorization": f"Bearer {config.github_token}",
+        "Accept": "application/vnd.github+json",
+    })
+    if pr_resp.status_code != 200:
+        _reply(github, config, comment_id, "Could not fetch PR details.")
+        return
+
+    pr_data = pr_resp.json()
+    branch = pr_data["head"]["ref"]
+    head_sha = pr_data["head"]["sha"]
+
+    # Fetch the current file content
+    file_url = f"https://api.github.com/repos/{config.repository}/contents/{parent_path}"
+    file_resp = requests.get(file_url, params={"ref": branch}, headers={
+        "Authorization": f"Bearer {config.github_token}",
+        "Accept": "application/vnd.github+json",
+    })
+    if file_resp.status_code != 200:
+        _reply(github, config, comment_id,
+               f"Could not fetch `{parent_path}` from branch `{branch}`.")
+        return
+
+    file_data = file_resp.json()
+    file_sha = file_data["sha"]
+    file_content = base64.b64decode(file_data["content"]).decode("utf-8")
+
+    # Replace the specific line with the suggestion
+    lines = file_content.split("\n")
+    line_idx = parent_line - 1  # 0-indexed
+
+    if line_idx < 0 or line_idx >= len(lines):
+        _reply(github, config, comment_id,
+               f"Line {parent_line} is out of range for `{parent_path}` "
+               f"({len(lines)} lines). The file may have changed.")
+        return
+
+    # Replace the line (suggestion may be multi-line)
+    suggestion_lines = suggested_code.split("\n")
+    lines[line_idx:line_idx + 1] = suggestion_lines
+
+    # Commit the fix
+    new_content = "\n".join(lines)
+    new_content_b64 = base64.b64encode(new_content.encode("utf-8")).decode("ascii")
+
+    commit_msg = f"fix: apply CriticAI suggestion in {parent_path}:{parent_line}"
+    put_resp = requests.put(file_url, json={
+        "message": commit_msg,
+        "content": new_content_b64,
+        "sha": file_sha,
+        "branch": branch,
+    }, headers={
+        "Authorization": f"Bearer {config.github_token}",
+        "Accept": "application/vnd.github+json",
+    })
+
+    if put_resp.status_code in (200, 201):
+        new_sha = put_resp.json().get("commit", {}).get("sha", "")[:7]
+        _reply(github, config, comment_id,
+               f"✅ **Fix committed** — pushed `{new_sha}` to `{branch}`\n\n"
+               f"Applied suggestion to `{parent_path}` line {parent_line}.")
+    else:
+        error_msg = put_resp.json().get("message", put_resp.text[:200])
+        _reply(github, config, comment_id,
+               f"❌ Could not push fix: {error_msg}\n\n"
+               f"You can still click 'Apply suggestion' on the inline comment.")
+
+
+def _generate_and_push_fix(github, config, event, finding_body, path, line):
+    """When there's no suggestion block, ask the model to generate a fix."""
+    comment_id = event["comment"]["id"]
+
+    if not path:
+        _reply(github, config, comment_id,
+               "I can see the finding but can't determine which file to fix. "
+               "Please reply to a specific inline comment with `@criticai fix`.")
+        return
+
+    # Ask the model to generate a fix
+    prompt = (
+        f"A code review finding needs to be fixed. Here is the finding:\n\n"
+        f"{finding_body}\n\n"
+        f"File: {path}, Line: {line}\n\n"
+        f"Generate ONLY the corrected line(s) of code that fix this issue. "
+        f"Output nothing else — just the replacement code, no explanation, "
+        f"no markdown fencing."
+    )
+    system = "You are CriticAI. Output only the fixed code, nothing else."
+    provider = get_provider(config.model, config)
+
+    try:
+        fix_code = provider.invoke(config.model, system, prompt).strip()
+        _reply(github, config, comment_id,
+               f"🔧 Here's the suggested fix for `{path}:{line}`:\n\n"
+               f"```suggestion\n{fix_code}\n```\n\n"
+               f"Click 'Apply suggestion' above to commit it, or reply "
+               f"`@criticai fix` again on the inline comment to auto-push.")
+    except Exception as e:
+        _reply(github, config, comment_id,
+               f"Could not generate a fix: {e}")
 
 
 def _handle_question(github, config, command, event):

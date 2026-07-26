@@ -39,8 +39,28 @@ class GitHubClient:
     # PR data
     # ------------------------------------------------------------------
 
-    def get_pr_diff(self) -> str:
-        """Fetch the full PR diff. Raises on failure."""
+    def get_pr_diff(self, base_sha: Optional[str] = None) -> str:
+        """Fetch the PR diff. Raises on failure.
+
+        If base_sha is provided, fetches the diff between that commit and
+        the PR head (incremental review of only new commits). Otherwise
+        fetches the full PR diff against the base branch.
+        """
+        if base_sha:
+            # Incremental: compare specific commits
+            head_sha = self.get_pr_head_sha()
+            if head_sha and base_sha != head_sha:
+                url = f"{self._base_url}/compare/{base_sha}...{head_sha}"
+                response = self._session.get(
+                    url, headers={"Accept": "application/vnd.github.diff"}
+                )
+                if response.status_code == 200:
+                    print(f"Incremental diff fetched ({base_sha[:7]}..{head_sha[:7]})")
+                    return response.text
+                # Fall through to full diff on failure
+                print(f"Incremental diff failed (HTTP {response.status_code}), using full diff.")
+
+        # Full PR diff
         url = f"{self._base_url}/pulls/{self._config.pr_number}"
         response = self._session.get(
             url, headers={"Accept": "application/vnd.github.diff"}
@@ -220,3 +240,15 @@ def extract_previous_findings(comment_body: Optional[str]) -> Optional[str]:
         findings = match.group(1).strip()
         return findings if findings else None
     return None
+
+
+def extract_reviewed_sha(comment_body: Optional[str]) -> Optional[str]:
+    """Extract the commit SHA from a previous review comment's header.
+
+    The comment header contains: '<sub>CriticAI reviewed at commit `abc1234`</sub>'
+    Returns the full short SHA, or None if not found.
+    """
+    if not comment_body:
+        return None
+    match = re.search(r"reviewed at commit `([a-f0-9]+)`", comment_body)
+    return match.group(1) if match else None
