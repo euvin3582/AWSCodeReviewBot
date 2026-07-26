@@ -1,10 +1,5 @@
-name: CriticAI
-description: >
-  AI-assisted GitHub PR code review powered by AWS Bedrock. A maintained
-  fork of eple0329/AWSBedrock-CodeReview with fixes for current Bedrock
-  Anthropic models (inference profile IDs, temperature/top_p conflicts),
-  plus support for OpenAI models via bedrock-mantle and an automatic
-  fallback model — see NOTICE.md.
+name: CriticAI Code Review
+description: AI-assisted GitHub PR code review powered by AWS Bedrock (Anthropic and OpenAI), styled after Gemini/CodeRabbit.
 inputs:
   # AWS
   aws-access-key-id:
