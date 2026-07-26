@@ -27,6 +27,7 @@ class CommandType(Enum):
     IGNORE = "ignore"
     FIX = "fix"
     FIX_CI = "fix-ci"
+    ASK = "ask"
     REVIEW = "review"
     HELP = "help"
     UNKNOWN = "unknown"
@@ -68,6 +69,10 @@ def parse_command(comment_body: str) -> Optional[Command]:
         "resolve": CommandType.FIX,
         "fix-ci": CommandType.FIX_CI,
         "fixci": CommandType.FIX_CI,
+        "ask": CommandType.ASK,
+        "search": CommandType.ASK,
+        "find": CommandType.ASK,
+        "where": CommandType.ASK,
         "review": CommandType.REVIEW,
         "re-review": CommandType.REVIEW,
         "help": CommandType.HELP,
@@ -86,6 +91,7 @@ HELP_TEXT = """\
 | `@criticai ignore` | Dismiss this finding (mark as intentional) |
 | `@criticai fix` | Generate and push a fix commit for this finding |
 | `@criticai fix-ci` | Analyze CI failures and suggest a fix |
+| `@criticai ask <question>` | Research the codebase (e.g. "where is auth defined?") |
 | `@criticai review` | Re-run the full review on the current diff |
 | `@criticai help` | Show this help message |
 

@@ -112,7 +112,8 @@ inputs:
           "severity": "🟠 Major",
           "category": "Correctness",
           "message": "Brief explanation of the issue.",
-          "suggestion": "corrected code for this line (optional, omit key if no fix)"
+          "suggestion": "corrected code for this line (optional, omit key if no fix)",
+          "confidence": "high"
         }
       ]
 
@@ -130,6 +131,11 @@ inputs:
       - "suggestion" should contain ONLY the replacement code for that
       single line (what should replace the current line). Omit the
       "suggestion" key entirely if you have no concrete fix.
+
+      - "confidence" must be "high", "medium", or "low". Use "high" for
+      definite bugs and clear violations. Use "medium" for likely issues
+      that depend on context. Use "low" for stylistic nits and
+      observations that might be intentional.
 
       - Include an entry for every finding from Part 1 that maps to a
       specific line. Omit findings that are general/architectural and

@@ -23,6 +23,7 @@ class InlineFinding:
     message: str         # explanation of the issue
     suggestion: Optional[str] = None  # suggested replacement code (for suggestion block)
     start_line: Optional[int] = None  # for multi-line suggestions
+    confidence: Optional[str] = None  # "high", "medium", "low" — for noise control
 
     def format_body(self) -> str:
         """Format this finding as a GitHub review comment body.
@@ -95,6 +96,44 @@ def parse_model_output(raw_output: str) -> ReviewOutput:
             message=item.get("message", ""),
             suggestion=item.get("suggestion"),
             start_line=item.get("start_line"),
+            confidence=item.get("confidence", "high"),
         ))
 
     return ReviewOutput(summary=summary, findings=findings)
+
+
+def filter_by_confidence(
+    findings: list[InlineFinding],
+    min_confidence: str = "medium",
+) -> list[InlineFinding]:
+    """Filter findings by confidence threshold (noise control).
+
+    Confidence levels: high > medium > low
+    - "high": only post findings the model is very confident about
+    - "medium": post high + medium confidence (default, balanced)
+    - "low": post everything (maximum noise)
+
+    Severity always overrides: Critical and Major findings are NEVER
+    filtered regardless of confidence level.
+    """
+    confidence_rank = {"high": 3, "medium": 2, "low": 1}
+    threshold = confidence_rank.get(min_confidence.lower(), 2)
+
+    kept: list[InlineFinding] = []
+    for f in findings:
+        # Critical and Major are never filtered
+        if "Critical" in f.severity or "Major" in f.severity:
+            kept.append(f)
+            continue
+
+        finding_confidence = confidence_rank.get(
+            (f.confidence or "high").lower(), 2
+        )
+        if finding_confidence >= threshold:
+            kept.append(f)
+
+    filtered_count = len(findings) - len(kept)
+    if filtered_count > 0:
+        print(f"  Noise control: suppressed {filtered_count} low-confidence finding(s)")
+
+    return kept

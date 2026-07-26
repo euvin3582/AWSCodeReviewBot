@@ -5,12 +5,13 @@ This is intentionally thin. All logic lives in the criticai/ package.
 
 import sys
 
+from criticai.auto_approve import should_auto_approve, post_auto_approval
 from criticai.config import Config
 from criticai.context import gather_context
 from criticai.diagrams import generate_diagram
 from criticai.diff import filter_diff, build_position_map, find_position, extract_changed_files
 from criticai.github import GitHubClient, extract_previous_findings, extract_reviewed_sha
-from criticai.inline import parse_model_output
+from criticai.inline import parse_model_output, filter_by_confidence
 from criticai.learnings import load_learnings, build_suppression_prompt
 from criticai.pr_description import maybe_generate_description
 from criticai.renderer import render_comment
@@ -47,20 +48,25 @@ def main() -> None:
     if repo_rules:
         print(f"Custom rules loaded ({len(repo_rules.rules)} rules, {len(repo_rules.focus)} focus areas)")
         rules_prompt = repo_rules.build_prompt_addition()
+
+        # Check auto-approval BEFORE running the full review
+        approve, reason = should_auto_approve(diff, changed_files, repo_rules)
+        if approve:
+            post_auto_approval(config, github, head_sha, reason)
+            # Still generate PR description if needed
+            if not existing_id:
+                maybe_generate_description(github, config, diff)
+            return  # Skip the full review — PR is safe
+
         # Filter out ignored files from the diff
-        changed_files_all = extract_changed_files(diff)
-        ignored = [f for f in changed_files_all if repo_rules.should_ignore_file(f)]
-        if ignored:
-            print(f"  Ignoring {len(ignored)} file(s) per .criticai.yml")
-            from criticai.diff import filter_diff as _filter
-            # Re-filter excluding ignored files
+        if repo_rules.ignore:
+            import re as _re
             lines = diff.split("\n")
             kept_lines = []
             current_file = None
-            import re
             for line in lines:
                 if line.startswith("diff --git"):
-                    match = re.search(r"diff --git a/(.*?) b/", line)
+                    match = _re.search(r"diff --git a/(.*?) b/", line)
                     if match:
                         current_file = match.group(1)
                 if current_file and not repo_rules.should_ignore_file(current_file):
@@ -68,6 +74,15 @@ def main() -> None:
                 elif current_file is None:
                     kept_lines.append(line)
             diff = "\n".join(kept_lines)
+            changed_files = extract_changed_files(diff)
+    else:
+        # No rules file — still check auto-approval with defaults
+        approve, reason = should_auto_approve(diff, changed_files)
+        if approve:
+            post_auto_approval(config, github, head_sha, reason)
+            if not existing_id:
+                maybe_generate_description(github, config, diff)
+            return
 
     # Load team learnings (dismissed findings)
     dismissed = load_learnings(github, head_sha)
@@ -125,10 +140,16 @@ def main() -> None:
 
     # Post inline review comments on the diff (if any findings have positions)
     if review_output.findings:
+        # Apply noise control — only post high-confidence findings
+        min_confidence = "medium"  # default
+        if repo_rules and repo_rules.min_severity in ("critical", "major"):
+            min_confidence = "high"  # stricter noise control when severity threshold is high
+        filtered_findings = filter_by_confidence(review_output.findings, min_confidence)
+
         position_map = build_position_map(diff)
         inline_comments = []
 
-        for finding in review_output.findings:
+        for finding in filtered_findings:
             position = find_position(position_map, finding.path, finding.line)
             if position is None:
                 print(

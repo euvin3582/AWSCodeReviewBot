@@ -67,6 +67,9 @@ def main() -> None:
     elif command.type == CommandType.FIX_CI:
         _handle_fix_ci(github, config, event)
 
+    elif command.type == CommandType.ASK:
+        _handle_ask(github, config, command, event)
+
     elif command.type == CommandType.REVIEW:
         # Re-run the full review — just call main.py's logic
         print("Re-review requested — delegating to main review flow.")
@@ -331,6 +334,26 @@ def _handle_question(github, config, command, event):
     except Exception as e:
         _reply(github, config, event["comment"]["id"],
                f"Sorry, I couldn't process your question: {e}")
+
+
+def _handle_ask(github, config, command, event):
+    """Research the codebase to answer a free-form question."""
+    from criticai.research import research_codebase
+
+    comment_id = event["comment"]["id"]
+    question = command.argument or command.raw_text
+
+    if not question or len(question.strip()) < 5:
+        _reply(github, config, comment_id,
+               "Please provide a question, e.g. `@criticai ask where is the auth middleware defined?`")
+        return
+
+    try:
+        answer = research_codebase(config, github, question)
+        _reply(github, config, comment_id, answer)
+    except Exception as e:
+        _reply(github, config, comment_id,
+               f"Could not research the codebase: {e}")
 
 
 def _handle_fix_ci(github, config, event):
