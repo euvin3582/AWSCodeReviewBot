@@ -9,6 +9,7 @@ Supported commands:
     @criticai explain <N>   - Explain finding number N specifically
     @criticai ignore        - Dismiss/acknowledge a finding (mark as intentional)
     @criticai fix           - Generate and push a fix commit for the finding
+    @criticai fix-ci        - Analyze and fix CI failures
     @criticai review        - Re-run the full review on the current diff
     @criticai help          - Show available commands
 """
@@ -25,6 +26,7 @@ class CommandType(Enum):
     EXPLAIN = "explain"
     IGNORE = "ignore"
     FIX = "fix"
+    FIX_CI = "fix-ci"
     REVIEW = "review"
     HELP = "help"
     UNKNOWN = "unknown"
@@ -39,8 +41,9 @@ class Command:
 
 
 # Pattern: @criticai <command> [optional argument]
+# Supports hyphenated commands like fix-ci
 _COMMAND_PATTERN = re.compile(
-    r"@criticai\s+(\w+)(?:\s+(.+))?",
+    r"@criticai\s+([\w-]+)(?:\s+(.+))?",
     re.IGNORECASE,
 )
 
@@ -63,6 +66,8 @@ def parse_command(comment_body: str) -> Optional[Command]:
         "dismiss": CommandType.IGNORE,
         "fix": CommandType.FIX,
         "resolve": CommandType.FIX,
+        "fix-ci": CommandType.FIX_CI,
+        "fixci": CommandType.FIX_CI,
         "review": CommandType.REVIEW,
         "re-review": CommandType.REVIEW,
         "help": CommandType.HELP,
@@ -80,6 +85,7 @@ HELP_TEXT = """\
 | `@criticai explain <N>` | Explain finding number N from the summary |
 | `@criticai ignore` | Dismiss this finding (mark as intentional) |
 | `@criticai fix` | Generate and push a fix commit for this finding |
+| `@criticai fix-ci` | Analyze CI failures and suggest a fix |
 | `@criticai review` | Re-run the full review on the current diff |
 | `@criticai help` | Show this help message |
 

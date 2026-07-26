@@ -7,11 +7,15 @@ import sys
 
 from criticai.config import Config
 from criticai.context import gather_context
+from criticai.diagrams import generate_diagram
 from criticai.diff import filter_diff, build_position_map, find_position, extract_changed_files
 from criticai.github import GitHubClient, extract_previous_findings, extract_reviewed_sha
 from criticai.inline import parse_model_output
+from criticai.learnings import load_learnings, build_suppression_prompt
+from criticai.pr_description import maybe_generate_description
 from criticai.renderer import render_comment
 from criticai.review import ReviewEngine
+from criticai.rules import load_rules
 
 
 def main() -> None:
@@ -37,6 +41,38 @@ def main() -> None:
     # Fetch head SHA for labeling the comment
     head_sha = github.get_pr_head_sha()
 
+    # Load custom rules from .criticai.yml (if present)
+    repo_rules = load_rules(github, config, head_sha)
+    rules_prompt = ""
+    if repo_rules:
+        print(f"Custom rules loaded ({len(repo_rules.rules)} rules, {len(repo_rules.focus)} focus areas)")
+        rules_prompt = repo_rules.build_prompt_addition()
+        # Filter out ignored files from the diff
+        changed_files_all = extract_changed_files(diff)
+        ignored = [f for f in changed_files_all if repo_rules.should_ignore_file(f)]
+        if ignored:
+            print(f"  Ignoring {len(ignored)} file(s) per .criticai.yml")
+            from criticai.diff import filter_diff as _filter
+            # Re-filter excluding ignored files
+            lines = diff.split("\n")
+            kept_lines = []
+            current_file = None
+            import re
+            for line in lines:
+                if line.startswith("diff --git"):
+                    match = re.search(r"diff --git a/(.*?) b/", line)
+                    if match:
+                        current_file = match.group(1)
+                if current_file and not repo_rules.should_ignore_file(current_file):
+                    kept_lines.append(line)
+                elif current_file is None:
+                    kept_lines.append(line)
+            diff = "\n".join(kept_lines)
+
+    # Load team learnings (dismissed findings)
+    dismissed = load_learnings(github, head_sha)
+    learnings_prompt = build_suppression_prompt(dismissed)
+
     # Gather codebase context (referenced files for cross-file awareness)
     changed_files = extract_changed_files(diff)
     context = gather_context(diff, changed_files, github, head_sha)
@@ -46,8 +82,18 @@ def main() -> None:
     if previous_findings:
         print("Found previous findings — will track resolution across pushes.")
 
-    # Run the AI review (with context + previous findings)
-    raw_output = engine.run(diff, previous_findings, context=context)
+    # Generate PR description if missing (first review only)
+    if not existing_id:
+        maybe_generate_description(github, config, diff)
+
+    # Run the AI review (with context, rules, learnings, previous findings)
+    raw_output = engine.run(
+        diff,
+        previous_findings,
+        context=context,
+        rules_prompt=rules_prompt,
+        learnings_prompt=learnings_prompt,
+    )
     if raw_output is None:
         print("No review to post (all models failed).")
         sys.exit(1)
@@ -55,8 +101,26 @@ def main() -> None:
     # Parse into summary + structured inline findings
     review_output = parse_model_output(raw_output)
 
+    # Generate sequence diagram for the walkthrough
+    diagram = generate_diagram(config, diff)
+    summary_with_diagram = review_output.summary
+    if diagram:
+        # Insert diagram after the Walkthrough section
+        if "## Findings" in summary_with_diagram:
+            summary_with_diagram = summary_with_diagram.replace(
+                "## Findings",
+                f"\n<details><summary>📊 Sequence Diagram</summary>\n\n{diagram}\n\n</details>\n\n## Findings"
+            )
+        elif "## Suggested follow-ups" in summary_with_diagram:
+            summary_with_diagram = summary_with_diagram.replace(
+                "## Suggested follow-ups",
+                f"\n<details><summary>📊 Sequence Diagram</summary>\n\n{diagram}\n\n</details>\n\n## Suggested follow-ups"
+            )
+        else:
+            summary_with_diagram += f"\n\n<details><summary>📊 Sequence Diagram</summary>\n\n{diagram}\n\n</details>"
+
     # Post/update the summary comment (issue comment, update-in-place)
-    summary_body = render_comment(review_output.summary, head_sha, config)
+    summary_body = render_comment(summary_with_diagram, head_sha, config)
     github.post_comment(summary_body, existing_id)
 
     # Post inline review comments on the diff (if any findings have positions)

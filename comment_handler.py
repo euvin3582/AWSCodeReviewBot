@@ -64,6 +64,9 @@ def main() -> None:
     elif command.type == CommandType.FIX:
         _handle_fix(github, config, command, event)
 
+    elif command.type == CommandType.FIX_CI:
+        _handle_fix_ci(github, config, event)
+
     elif command.type == CommandType.REVIEW:
         # Re-run the full review — just call main.py's logic
         print("Re-review requested — delegating to main review flow.")
@@ -328,6 +331,40 @@ def _handle_question(github, config, command, event):
     except Exception as e:
         _reply(github, config, event["comment"]["id"],
                f"Sorry, I couldn't process your question: {e}")
+
+
+def _handle_fix_ci(github, config, event):
+    """Analyze CI failures and suggest a fix."""
+    from criticai.ci_fix import analyze_ci_failure, generate_ci_fix_suggestion
+
+    comment_id = event["comment"]["id"]
+
+    _reply(github, config, comment_id,
+           "🔍 Analyzing CI failures... one moment.")
+
+    failure_context = analyze_ci_failure(config, github)
+    if not failure_context:
+        _reply(github, config, comment_id,
+               "No CI failures found on the current commit. All checks passing! ✅")
+        return
+
+    if failure_context == "No failed CI checks found on the current commit.":
+        _reply(github, config, comment_id, failure_context)
+        return
+
+    # Get the current diff for context
+    try:
+        diff = github.get_pr_diff()
+    except Exception:
+        diff = ""
+
+    try:
+        suggestion = generate_ci_fix_suggestion(config, failure_context, diff)
+        _reply(github, config, comment_id,
+               f"🔧 **CI Failure Analysis**\n\n{suggestion}")
+    except Exception as e:
+        _reply(github, config, comment_id,
+               f"Could not analyze CI failure: {e}")
 
 
 if __name__ == "__main__":

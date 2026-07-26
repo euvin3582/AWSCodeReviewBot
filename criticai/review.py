@@ -25,6 +25,8 @@ class ReviewEngine:
         diff: str,
         previous_findings: Optional[str] = None,
         context: Optional[str] = None,
+        rules_prompt: str = "",
+        learnings_prompt: str = "",
     ) -> Optional[str]:
         """Execute the review. Returns the review markdown, or None if all models failed.
 
@@ -32,9 +34,11 @@ class ReviewEngine:
             diff: The filtered PR diff text.
             previous_findings: Prior findings for resolution tracking.
             context: Additional file contents for cross-file awareness.
+            rules_prompt: Custom rules from .criticai.yml to inject.
+            learnings_prompt: Team learnings/suppression info.
         """
         user_content = self._build_user_content(diff, previous_findings, context)
-        system_prompt = self._build_system_prompt()
+        system_prompt = self._build_system_prompt(rules_prompt, learnings_prompt)
 
         # Try primary model
         try:
@@ -70,9 +74,15 @@ class ReviewEngine:
         provider = get_provider(model_id, self._config)
         return provider.invoke(model_id, system_prompt, user_content)
 
-    def _build_system_prompt(self) -> str:
-        """Construct the system prompt from config."""
-        return self._config.prompt + f" Please answer in {self._config.language}. "
+    def _build_system_prompt(self, rules_prompt: str = "", learnings_prompt: str = "") -> str:
+        """Construct the system prompt from config + custom rules + learnings."""
+        parts = [self._config.prompt]
+        if rules_prompt:
+            parts.append(rules_prompt)
+        if learnings_prompt:
+            parts.append(learnings_prompt)
+        parts.append(f"Please answer in {self._config.language}.")
+        return " ".join(parts)
 
     def _build_user_content(
         self, diff: str, previous_findings: Optional[str], context: Optional[str] = None
