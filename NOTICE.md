@@ -254,6 +254,34 @@ re-flagged finding 1 as still open (see above), and raised one additional
 GitHub API's default oldest-first ordering rather than the most recent.
 Fixed by requesting `sort=created&direction=desc` explicitly.
 
+## Fail loudly on diff-fetch errors instead of silently no-op'ing (added 2026-07-26)
+
+`get_pr_diff()` previously caught any `requests` exception (including a
+non-2xx status from `raise_for_status()`) and returned `None` instead of
+propagating it. That `None` flowed into `analyze_with_bedrock()` as an
+invalid diff — both the primary and fallback model calls then failed for
+what looked like an unrelated reason (a malformed request body), not the
+real cause (no diff was ever fetched). `post_review()` saw no review to
+post, logged that, and returned normally. Since nothing raised, the
+composite action step exited 0, so the check reported **success** with no
+review comment posted and no clear signal why.
+
+Confirmed live on `dogvatar-dog/DogvatarOnboarding#36`: the workflow's
+`permissions:` block only granted `pull-requests: write`, which — because
+listing any permission sets everything unlisted to `none` — left
+`contents` at `none`. Fetching the PR diff via
+`Accept: application/vnd.github.diff` reads actual git blob content, which
+needs `contents: read`, not just `pull-requests` access to PR metadata.
+The run log showed `Error: 403 Client Error: Forbidden for url:
+.../pulls/36` immediately followed by both model calls failing on the
+resulting empty diff, on an otherwise-green check.
+
+`get_pr_diff()` now lets the real error propagate (so the Action fails
+instead of reporting a false green), and prints a specific hint when the
+failure is a 403, since a missing `contents: read` scope in the *calling*
+workflow is the most likely cause and isn't obvious from the generic
+`requests` error alone.
+
 ## Maintenance
 
 Bedrock's model lineup changes over time (see

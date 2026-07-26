@@ -40,6 +40,19 @@ COMMENT_MARKER = "<!-- awscodereviewbot:review -->"
 
 
 def get_pr_diff():
+    """Fetch the PR diff via the JSON API's diff media type.
+
+    Raises on any request failure instead of swallowing it and returning
+    None. A prior version caught the error here and returned None, which
+    flowed silently into analyze_with_bedrock() as an invalid diff -- both
+    the primary and fallback model calls would then fail for an unrelated-
+    looking reason (a malformed request body), post_review() would see no
+    review to post and just log it, and the composite action step would
+    still exit 0. Net effect: a green check with no review posted and no
+    clear signal why (confirmed live on dogvatar-dog/DogvatarOnboarding#36).
+    Letting the real error propagate makes the check fail instead, with the
+    actual cause in the log.
+    """
     api_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
 
     headers = {
@@ -47,16 +60,20 @@ def get_pr_diff():
         "Accept": "application/vnd.github.diff"
     }
 
-    try:
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-        print(f"Status Code: {response.status_code}")
+    response = requests.get(api_url, headers=headers)
+    if response.status_code == 403:
+        print(
+            "Error: 403 fetching the PR diff. This usually means the "
+            "workflow's GITHUB_TOKEN is missing `contents: read` -- "
+            "fetching diff/patch content requires that scope, unlike "
+            "posting the review comment which only needs "
+            "`pull-requests: write`. Add `contents: read` to the calling "
+            "workflow's `permissions:` block."
+        )
+    response.raise_for_status()
+    print(f"Status Code: {response.status_code}")
 
-        return filtering_diff(response.text)
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error: {e}")
-        return None
+    return filtering_diff(response.text)
 
 
 def get_pr_head_sha():

@@ -54,6 +54,7 @@ on:
     types: [opened, synchronize]
 
 permissions:
+  contents: read
   pull-requests: write
 
 jobs:
@@ -83,12 +84,27 @@ automatically. For maximum stability, pin to an exact version tag (e.g.
 
 ```yaml
 permissions:
+  contents: read
   pull-requests: write
 ```
 
-Write permission for pull requests is mandatory. Without it you'll see
-errors like `"Resource not accessible by integration"` or
-`"HttpError: 403 Forbidden"`.
+Both are mandatory:
+
+- `pull-requests: write` — required to post/update the review comment.
+  Without it you'll see errors like `"Resource not accessible by
+  integration"` or `"HttpError: 403 Forbidden"` when posting.
+- `contents: read` — required to fetch the PR diff itself. This action
+  requests the diff via `Accept: application/vnd.github.diff`, which reads
+  git blob content rather than just PR metadata, so `pull-requests` access
+  alone isn't enough. Without it, `get_pr_diff()` gets a 403 and the
+  action fails before ever calling Bedrock (see NOTICE.md, "Fail loudly on
+  diff-fetch errors instead of silently no-op'ing" — this used to fail
+  silently with a false-green check instead).
+
+Remember that listing any permission under `permissions:` sets every
+unlisted scope to `none`, so both lines above need to be present together
+— just adding `pull-requests: write` on its own (as in some older
+examples) leaves `contents` at `none`.
 
 ## Inputs
 
