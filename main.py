@@ -6,7 +6,8 @@ This is intentionally thin. All logic lives in the criticai/ package.
 import sys
 
 from criticai.config import Config
-from criticai.diff import filter_diff, build_position_map, find_position
+from criticai.context import gather_context
+from criticai.diff import filter_diff, build_position_map, find_position, extract_changed_files
 from criticai.github import GitHubClient, extract_previous_findings
 from criticai.inline import parse_model_output
 from criticai.renderer import render_comment
@@ -28,6 +29,10 @@ def main() -> None:
     # Fetch head SHA for labeling the comment
     head_sha = github.get_pr_head_sha()
 
+    # Gather codebase context (referenced files for cross-file awareness)
+    changed_files = extract_changed_files(diff)
+    context = gather_context(diff, changed_files, github, head_sha)
+
     # Check for existing review comment (update-in-place)
     existing_id, existing_body = github.find_existing_comment()
 
@@ -36,8 +41,8 @@ def main() -> None:
     if previous_findings:
         print("Found previous findings — will track resolution across pushes.")
 
-    # Run the AI review
-    raw_output = engine.run(diff, previous_findings)
+    # Run the AI review (with context + previous findings)
+    raw_output = engine.run(diff, previous_findings, context=context)
     if raw_output is None:
         print("No review to post (all models failed).")
         sys.exit(1)
@@ -57,7 +62,6 @@ def main() -> None:
         for finding in review_output.findings:
             position = find_position(position_map, finding.path, finding.line)
             if position is None:
-                # Line isn't in the diff — can't post inline, skip
                 print(
                     f"  Skipping inline comment for {finding.path}:{finding.line} "
                     f"(not in diff)"

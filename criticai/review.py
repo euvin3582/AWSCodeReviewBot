@@ -20,9 +20,20 @@ class ReviewEngine:
     def __init__(self, config: Config) -> None:
         self._config = config
 
-    def run(self, diff: str, previous_findings: Optional[str] = None) -> Optional[str]:
-        """Execute the review. Returns the review markdown, or None if all models failed."""
-        user_content = self._build_user_content(diff, previous_findings)
+    def run(
+        self,
+        diff: str,
+        previous_findings: Optional[str] = None,
+        context: Optional[str] = None,
+    ) -> Optional[str]:
+        """Execute the review. Returns the review markdown, or None if all models failed.
+
+        Args:
+            diff: The filtered PR diff text.
+            previous_findings: Prior findings for resolution tracking.
+            context: Additional file contents for cross-file awareness.
+        """
+        user_content = self._build_user_content(diff, previous_findings, context)
         system_prompt = self._build_system_prompt()
 
         # Try primary model
@@ -64,26 +75,36 @@ class ReviewEngine:
         return self._config.prompt + f" Please answer in {self._config.language}. "
 
     def _build_user_content(
-        self, diff: str, previous_findings: Optional[str]
+        self, diff: str, previous_findings: Optional[str], context: Optional[str] = None
     ) -> str:
-        """Build the user message content, optionally appending prior findings."""
-        if not previous_findings:
-            return diff
+        """Build the user message content with optional context and prior findings."""
+        parts: list[str] = []
 
-        return (
-            diff
-            + "\n\n---\n"
-            "PREVIOUS REVIEW FINDINGS (from the last push on this PR):\n"
-            "Compare these against the current diff above. If a finding "
-            "has been addressed — even if the fix is in a related area of "
-            "the code rather than the exact line originally flagged — mark "
-            "it as resolved with ✅ and strikethrough (~~text~~) in your "
-            "new Findings section, e.g.:\n"
-            "  ✅ ~~🟠 Major *Correctness* — `src/App.tsx`: missing null "
-            "check~~ (resolved in this push)\n"
-            "Only keep unresolved findings as active (without strikethrough). "
-            "If ALL prior findings are resolved and no new ones exist, "
-            "omit the Findings section entirely.\n\n"
-            f"{previous_findings}\n"
-            "---\n"
-        )
+        # Codebase context (referenced files) goes first so the model
+        # has it in mind when reading the diff
+        if context:
+            parts.append(context)
+
+        # The diff itself
+        parts.append(diff)
+
+        # Previous findings for resolution tracking
+        if previous_findings:
+            parts.append(
+                "\n\n---\n"
+                "PREVIOUS REVIEW FINDINGS (from the last push on this PR):\n"
+                "Compare these against the current diff above. If a finding "
+                "has been addressed — even if the fix is in a related area of "
+                "the code rather than the exact line originally flagged — mark "
+                "it as resolved with ✅ and strikethrough (~~text~~) in your "
+                "new Findings section, e.g.:\n"
+                "  ✅ ~~🟠 Major *Correctness* — `src/App.tsx`: missing null "
+                "check~~ (resolved in this push)\n"
+                "Only keep unresolved findings as active (without strikethrough). "
+                "If ALL prior findings are resolved and no new ones exist, "
+                "omit the Findings section entirely.\n\n"
+                f"{previous_findings}\n"
+                "---\n"
+            )
+
+        return "\n\n".join(parts)

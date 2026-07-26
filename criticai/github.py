@@ -66,6 +66,36 @@ class GitHubClient:
             print(f"Warning: could not fetch PR head SHA: {e}")
             return None
 
+    def get_file_content(self, path: str, ref: Optional[str] = None) -> Optional[str]:
+        """Fetch the content of a single file from the repository.
+
+        Args:
+            path: File path relative to repo root (e.g. "src/types.ts")
+            ref: Git ref (branch, tag, SHA). Defaults to PR head if None.
+
+        Returns the decoded file content, or None if the file doesn't exist
+        or can't be fetched (non-critical, just means less context).
+        """
+        url = f"{self._base_url}/contents/{path}"
+        params = {}
+        if ref:
+            params["ref"] = ref
+
+        try:
+            response = self._session.get(url, params=params)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            data = response.json()
+            # GitHub returns base64-encoded content for files under 1MB
+            if data.get("encoding") == "base64":
+                import base64
+                return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
+            # For larger files or different encodings, skip
+            return None
+        except requests.RequestException:
+            return None
+
     # ------------------------------------------------------------------
     # Comment management (update-in-place)
     # ------------------------------------------------------------------
