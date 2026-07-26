@@ -1,5 +1,5 @@
 name: CriticAI Code Review
-description: AI-assisted GitHub PR code review powered by AWS Bedrock (Anthropic and OpenAI), styled after Gemini/CodeRabbit.
+description: AI-assisted GitHub PR code review powered by AWS Bedrock. Inline fixes, auto-approval, codebase-aware analysis, zero per-seat cost.
 inputs:
   # AWS
   aws-access-key-id:
@@ -45,15 +45,13 @@ inputs:
   # Custom
   prompt:
     description: >
-      Bedrock prompt. The default asks for a Gemini Code Assist /
-      CodeRabbit-style structured review (Summary, Walkthrough,
-      severity-tagged Findings) — see README.md "Comment format" and
-      NOTICE.md for why. Overriding this input replaces the structure
+      Bedrock prompt. The default produces a structured review with
+      Summary, Walkthrough, severity-tagged Findings, and inline JSON
+      for suggestion blocks. Overriding this input replaces the structure
       entirely, not just the persona/focus.
     required: false
     default: >-
-      You are an expert code reviewer performing a pull request review,
-      in the style of tools like Gemini Code Assist and CodeRabbit.
+      You are an expert code reviewer performing a pull request review.
       Below is a code diff. Your response MUST have exactly two parts:
 
 

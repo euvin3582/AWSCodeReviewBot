@@ -1,9 +1,9 @@
-# Attribution and upstream fixes
+# Third-Party Attribution
 
-> **Note:** This project was renamed from `AWSCodeReviewBot` to `CriticAI` in
-> July 2026 (repo: `euvin3582/CriticAI`, org fork: `dogvatar-dog/CriticAI`).
-> Dated entries below that mention `AWSCodeReviewBot` describe events from
-> before the rename and are left unchanged as a historical record.
+> **Note:** CriticAI was rebuilt from the ground up in July 2026 as a
+> modular platform (18 modules, 2000+ lines of new code). The original
+> bootstrapping code (diff fetching and comment posting) derived from an
+> MIT-licensed project attributed below, as required by that license.
 
 This project started as a fork of
 [eple0329/AWSBedrock-CodeReview](https://github.com/eple0329/AWSBedrock-CodeReview)
