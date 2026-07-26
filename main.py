@@ -98,6 +98,28 @@ def get_pr_head_sha():
         return None
 
 
+def get_pr_head_sha():
+    """Fetch the PR's current head commit SHA via the normal JSON API
+    (get_pr_diff() requests the diff media type instead, which doesn't
+    include this). Used only to label the posted comment with the commit
+    it reviewed — Gemini Code Assist and CodeRabbit both do this so a
+    reviewer can tell whether a comment reflects the latest push. Best
+    effort: returns None on any failure rather than blocking the review.
+    """
+    api_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json"
+    }
+    try:
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
+        return response.json().get("head", {}).get("sha")
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: could not fetch PR head SHA: {e}")
+        return None
+
+
 def filtering_diff(diff):
     changed_files = set(re.findall(r'diff --git a/(.*?) b/', diff))
     print("changed_files:")
