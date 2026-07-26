@@ -1,21 +1,44 @@
-MIT License
+Business Source License 1.1
 
-Copyright (c) 2026 Jose Euvin
+Licensor:  Jose Euvin (euvin3582)
+Licensed Work:  CriticAI
+Change Date:  2030-07-26
+Change License:  Apache License 2.0
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Terms
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The Licensor hereby grants you the right to copy, modify, create
+derivative works, redistribute, and make non-production use of the
+Licensed Work.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Additional Use Grant:
+
+You may use the Licensed Work in production, free of charge, under the
+following conditions:
+
+  1. PUBLIC REPOSITORIES ONLY. The Licensed Work may be used without a
+     commercial license on GitHub repositories with visibility set to
+     "public". Use on private, internal, or organization-only repositories
+     requires a valid commercial license from the Licensor.
+
+  2. EXEMPT ORGANIZATIONS. The following GitHub organizations may use the
+     Licensed Work on any repository (public or private) without a
+     commercial license:
+       - dogvatar-dog
+
+  3. COMMERCIAL LICENSE. To use the Licensed Work on private repositories
+     or for commercial purposes beyond the grants above, contact the
+     Licensor at euvin3582@gmail.com or visit https://criticai.dev for
+     pricing.
+
+On the Change Date above, the Licensed Work will be made available under
+the Change License (Apache 2.0), at which point the above restrictions
+no longer apply.
+
+Effective Date: 2026-07-26
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED. IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+For the full BSL 1.1 text, see: https://mariadb.com/bsl11/

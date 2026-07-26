@@ -167,6 +167,10 @@ inputs:
     description: 'Home Directory In Your Project'
     required: false
     default: ''
+  license-key:
+    description: 'CriticAI license key for private repos. Free for public repos. Get a key at https://criticai.dev'
+    required: false
+    default: ''
   mode:
     description: 'Execution mode: "review" (default) runs the PR review, "commands" handles @criticai comment replies'
     required: false
@@ -190,6 +194,8 @@ runs:
       shell: bash
       env:
         PYTHONPATH: ${{ github.action_path }}
+        CRITICAI_LICENSE_KEY: ${{ inputs.license-key }}
+        INPUT_REPO_VISIBILITY: ${{ github.event.repository.visibility }}
         INPUT_AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
         INPUT_AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
         INPUT_AWS_REGION: ${{ inputs.aws-region }}
