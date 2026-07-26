@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: CriticAI Code Review
-        uses: euvin3582/CriticAI@main
+        uses: euvin3582/CriticAI@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -75,8 +75,9 @@ jobs:
           prompt: 'your custom prompt'
 ```
 
-Pin to a commit SHA or release tag instead of `@main` for production use,
-since `main` can change.
+`@v1` (used above) tracks the latest `v1.x.y` release and picks up fixes
+automatically. For maximum stability, pin to an exact version tag (e.g.
+`@v1.1.0`) or a commit SHA instead.
 
 ## Permissions
 
