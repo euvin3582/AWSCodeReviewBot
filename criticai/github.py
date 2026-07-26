@@ -112,6 +112,40 @@ class GitHubClient:
         response.raise_for_status()
         print(f"Comment {action} successfully!")
 
+    def post_inline_review(
+        self,
+        comments: list[dict],
+        head_sha: Optional[str] = None,
+    ) -> None:
+        """Submit a PR review with inline comments on specific diff lines.
+
+        Each item in `comments` should have: path, position, body.
+        Optionally start_line/line for multi-line comments.
+        Uses event=COMMENT so it doesn't block merges.
+        """
+        if not comments:
+            print("No inline comments to post.")
+            return
+
+        url = f"{self._base_url}/pulls/{self._config.pr_number}/reviews"
+        payload: dict = {
+            "event": "COMMENT",
+            "comments": comments,
+        }
+        if head_sha:
+            payload["commit_id"] = head_sha
+
+        try:
+            response = self._session.post(url, json=payload)
+            response.raise_for_status()
+            print(f"Inline review posted with {len(comments)} comment(s).")
+        except requests.RequestException as e:
+            # Don't fail the whole action if inline comments fail —
+            # the summary comment is already posted.
+            print(f"Warning: could not post inline review: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"  Response: {e.response.text[:500]}")
+
     # ------------------------------------------------------------------
     # Identity resolution
     # ------------------------------------------------------------------

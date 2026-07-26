@@ -6,8 +6,9 @@ This is intentionally thin. All logic lives in the criticai/ package.
 import sys
 
 from criticai.config import Config
-from criticai.diff import filter_diff
+from criticai.diff import filter_diff, build_position_map, find_position
 from criticai.github import GitHubClient, extract_previous_findings
+from criticai.inline import parse_model_output
 from criticai.renderer import render_comment
 from criticai.review import ReviewEngine
 
@@ -36,15 +37,46 @@ def main() -> None:
         print("Found previous findings — will track resolution across pushes.")
 
     # Run the AI review
-    review_text = engine.run(diff, previous_findings)
-
-    # Post or update the comment
-    if review_text is None:
+    raw_output = engine.run(diff, previous_findings)
+    if raw_output is None:
         print("No review to post (all models failed).")
         sys.exit(1)
 
-    body = render_comment(review_text, head_sha, config)
-    github.post_comment(body, existing_id)
+    # Parse into summary + structured inline findings
+    review_output = parse_model_output(raw_output)
+
+    # Post/update the summary comment (issue comment, update-in-place)
+    summary_body = render_comment(review_output.summary, head_sha, config)
+    github.post_comment(summary_body, existing_id)
+
+    # Post inline review comments on the diff (if any findings have positions)
+    if review_output.findings:
+        position_map = build_position_map(diff)
+        inline_comments = []
+
+        for finding in review_output.findings:
+            position = find_position(position_map, finding.path, finding.line)
+            if position is None:
+                # Line isn't in the diff — can't post inline, skip
+                print(
+                    f"  Skipping inline comment for {finding.path}:{finding.line} "
+                    f"(not in diff)"
+                )
+                continue
+
+            comment: dict = {
+                "path": finding.path,
+                "position": position,
+                "body": finding.format_body(),
+            }
+            inline_comments.append(comment)
+
+        if inline_comments:
+            github.post_inline_review(inline_comments, head_sha)
+        else:
+            print("No findings mapped to diff positions — inline review skipped.")
+    else:
+        print("No structured findings — inline review skipped.")
 
 
 if __name__ == "__main__":
