@@ -163,6 +163,10 @@ inputs:
     description: 'Home Directory In Your Project'
     required: false
     default: ''
+  mode:
+    description: 'Execution mode: "review" (default) runs the PR review, "commands" handles @criticai comment replies'
+    required: false
+    default: 'review'
 
 branding:
   icon: 'check-circle'
@@ -173,7 +177,12 @@ runs:
   steps:
     - run: pip install -r ${{ github.action_path }}/requirements.txt
       shell: bash
-    - run: python ${{ github.action_path }}/main.py
+    - run: |
+        if [ "${{ inputs.mode }}" = "commands" ]; then
+          python ${{ github.action_path }}/comment_handler.py
+        else
+          python ${{ github.action_path }}/main.py
+        fi
       shell: bash
       env:
         PYTHONPATH: ${{ github.action_path }}
@@ -182,7 +191,7 @@ runs:
         INPUT_AWS_REGION: ${{ inputs.aws-region }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_GITHUB_REPOSITORY: ${{ github.repository }}
-        INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        INPUT_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         INPUT_MODEL: ${{ inputs.model }}
         INPUT_FALLBACK_MODEL: ${{ inputs.fallback-model }}
         INPUT_MAX_TOKENS: ${{ inputs.max-tokens }}
