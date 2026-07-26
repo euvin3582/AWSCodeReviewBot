@@ -67,7 +67,7 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-          github-token: ${{ secrets.GITHUB_TOKEN }} # provided by GitHub automatically
+          github-token: ${{ secrets.CRITIC_AI_TOKEN }} # see "Bot identity" below
           # Optional
           model: 'openai.gpt-5.6-terra' # default (primary model)
           fallback-model: 'us.anthropic.claude-haiku-4-5-20251001-v1:0' # default (used if primary fails)
@@ -106,6 +106,40 @@ unlisted scope to `none`, so both lines above need to be present together
 — just adding `pull-requests: write` on its own (as in some older
 examples) leaves `contents` at `none`.
 
+## Bot identity
+
+By default, GitHub attributes every comment posted with `${{
+secrets.GITHUB_TOKEN }}` to `github-actions[bot]` — the review text itself
+still says "CriticAI", but the comment byline above it reads
+`github-actions[bot] commented`, since GitHub controls that identity, not
+this action. There's no input or config that changes this while using the
+default token.
+
+To have reviews posted under a bot identity, use a dedicated machine
+account instead:
+
+1. Create a GitHub account for the bot (e.g. `criticai-bot`). This must be
+   a real signup completed by a human — GitHub's Terms of Service prohibit
+   accounts created by automated/scripted means. GitHub explicitly permits
+   this pattern as a ["machine account"](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#3-account-requirements):
+   an account a human sets up and is responsible for, used exclusively for
+   automated tasks. Enable 2FA on it.
+2. Invite that account as a **Write** collaborator on your repo (`Settings
+   → Collaborators and teams`), and accept the invite from the bot
+   account.
+3. While logged in as the bot account, generate a fine-grained [personal
+   access token](https://github.com/settings/tokens?type=beta) scoped to
+   that repo with **Pull requests: Read and write** and **Issues: Read and
+   write** permissions.
+4. Add the token as a repository secret (e.g. `CRITIC_AI_TOKEN`) and pass
+   it as `github-token` instead of `${{ secrets.GITHUB_TOKEN }}`, as in the
+   example above.
+
+No code changes are needed for this — `criticai/github.py` already
+resolves whatever identity the token belongs to (`GET /user`) and uses it
+both for posting and for recognizing the bot's own comments on later
+runs.
+
 ## Inputs
 
 ### Required
@@ -115,7 +149,7 @@ examples) leaves `contents` at `none`.
 | `aws-access-key-id` | AWS IAM access key ID. |
 | `aws-secret-access-key` | AWS IAM secret access key. |
 | `aws-region` | AWS region with Bedrock enabled, e.g. `us-east-1`. |
-| `github-token` | GitHub API token. Use `${{ secrets.GITHUB_TOKEN }}` — no need to add it to secrets yourself. |
+| `github-token` | GitHub API token. `${{ secrets.GITHUB_TOKEN }}` works with no setup (provided automatically), but posts as `github-actions[bot]` — see [Bot identity](#bot-identity) to post as a dedicated bot account instead. |
 
 The IAM principal behind `aws-access-key-id` / `aws-secret-access-key`
 needs, at minimum, for the broadest (least-scoped) setup:
