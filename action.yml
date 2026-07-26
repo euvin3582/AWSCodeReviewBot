@@ -133,6 +133,7 @@ runs:
     - run: python ${{ github.action_path }}/main.py
       shell: bash
       env:
+        PYTHONPATH: ${{ github.action_path }}
         INPUT_AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
         INPUT_AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
         INPUT_AWS_REGION: ${{ inputs.aws-region }}
