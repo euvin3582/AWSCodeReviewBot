@@ -1,70 +1,56 @@
-# CriticAI
+<p align="center">
+  <h1 align="center">CriticAI</h1>
+  <p align="center">
+    <strong>AI-powered code review that catches what humans miss.</strong><br>
+    Inline fixes. Codebase awareness. Auto-approval. Zero per-seat cost.
+  </p>
+</p>
 
-AI-powered code review for GitHub PRs — inline comments with one-click fixes,
-codebase-aware analysis, auto-approval for safe PRs, and conversational
-interaction. Powered by AWS Bedrock (GPT-5.6 Terra + Claude Haiku 4.5 fallback).
+<p align="center">
+  <a href="#setup">Setup</a> •
+  <a href="#features">Features</a> •
+  <a href="#commands">Commands</a> •
+  <a href="#configuration">Configuration</a> •
+  <a href="#architecture">Architecture</a>
+</p>
 
-Zero per-seat cost. Runs on your own AWS account.
+---
 
-## Features
+## What is CriticAI?
 
-### Core Review
-- **Inline comments with suggestion blocks** — findings posted directly on
-  diff lines with `Apply suggestion` for one-click commits
-- **Codebase-aware** — fetches imported/referenced files for cross-file analysis
-  (catches broken contracts, deprecated usage, type mismatches)
-- **Structured output** — Summary, Walkthrough, severity-tagged Findings
-  (🔴 Critical, 🟠 Major, 🟡 Minor, 🔵 Nit)
-- **Sequence diagrams** — auto-generated Mermaid diagrams showing call flow
-- **Incremental review** — on subsequent pushes, only reviews new commits
-- **Resolved finding tracking** — marks fixed findings with ✅ strikethrough,
-  even when the fix is in a related area (not just the exact line)
+CriticAI is a self-hosted AI code review bot for GitHub. It reviews every PR
+automatically, posts inline comments with one-click fix suggestions, auto-approves
+safe changes, and responds to conversational commands — all powered by the
+top-performing AI models available on AWS Bedrock.
 
-### Automation
-- **Auto-approval** — trivial/safe PRs (docs, tests, config, small changes)
-  get auto-approved to dissolve queue time
-- **Auto-fix commits** — `@criticai fix` pushes a commit with the suggested fix
-- **PR description generation** — auto-generates title + body when PR is opened
-  without a description
-- **Fix CI failures** — `@criticai fix-ci` analyzes failed checks and suggests fixes
+**Models used:**
+- **Primary:** GPT-5.6 Sol (leading SWE-bench scores, best at code generation)
+- **Fallback:** Claude Opus 4.8 (exceptional multi-file reasoning and semantic logic)
 
-### Intelligence
-- **Custom rules** — `.criticai.yml` per repo for team standards, focus areas,
-  ignore patterns, severity thresholds
-- **Knowledge base** — dismissed findings are tracked; the same pattern won't
-  be re-flagged at high severity
-- **Noise control** — confidence-based filtering; only posts findings the model
-  is confident about (Critical/Major always pass through)
-- **Automatic fallback model** — if the primary model fails, retries with a
-  fallback (GPT-5.6 → Claude Haiku 4.5)
-
-### Conversational
-- `@criticai explain` — deeper explanation of a finding
-- `@criticai fix` — push a fix commit for this finding
-- `@criticai fix-ci` — diagnose and fix CI failures
-- `@criticai ask <question>` — research the codebase ("where is auth defined?")
-- `@criticai ignore` — dismiss a finding permanently
-- `@criticai review` — re-run the full review
-- `@criticai help` — show all commands
+Both are accessed through AWS Bedrock. If the primary model fails for any reason,
+the fallback fires automatically — no review is ever silently dropped.
 
 ---
 
 ## Setup
 
-### 1. Add the workflow to your repo
+### Step 1: Add the workflow
 
-Create `.github/workflows/criticai-code-review.yml`:
+Create `.github/workflows/criticai.yml` in your repo:
 
 ```yaml
 name: CriticAI
+
 on:
   pull_request:
     types: [opened, reopened, synchronize]
   issue_comment:
     types: [created]
+
 permissions:
   contents: read
   pull-requests: write
+
 jobs:
   review:
     name: CriticAI Code Review
@@ -72,15 +58,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Run Review
-        uses: dogvatar-dog/CriticAI@v1
+      - uses: dogvatar-dog/CriticAI@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          max-tokens: 3072
-          mode: review
+
   commands:
     name: CriticAI Commands
     if: >-
@@ -90,100 +74,159 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Handle Command
-        uses: dogvatar-dog/CriticAI@v1
+      - uses: dogvatar-dog/CriticAI@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          max-tokens: 3072
           mode: commands
 ```
 
-### 2. Configure AWS secrets
+### Step 2: Add AWS secrets
 
-Add these as org-level or repo-level GitHub Actions secrets:
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION` (e.g. `us-east-1`)
+Set these as **org-level** GitHub Actions secrets (Settings → Secrets → Actions):
 
-The IAM user needs:
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCESS_KEY_ID` | IAM access key with Bedrock permissions |
+| `AWS_SECRET_ACCESS_KEY` | Corresponding secret key |
+| `AWS_REGION` | e.g. `us-east-1` |
+
+**Required IAM permissions:**
 ```json
 {
   "Statement": [
-    {"Effect": "Allow", "Action": "bedrock:InvokeModel", "Resource": "*"},
-    {"Effect": "Allow", "Action": "bedrock-mantle:CreateInference", "Resource": "*"}
+    { "Effect": "Allow", "Action": "bedrock:InvokeModel", "Resource": "*" },
+    { "Effect": "Allow", "Action": "bedrock-mantle:CreateInference", "Resource": "*" }
   ]
 }
 ```
 
-### 3. (Optional) Add custom rules
+### Step 3: Open a PR
 
-Create `.criticai.yml` in your repo root:
+That's it. CriticAI reviews automatically on every PR.
+
+---
+
+## Features
+
+### 🔍 Intelligent Review
+
+| Feature | Description |
+|---------|-------------|
+| **Inline comments** | Findings posted directly on diff lines with `Apply suggestion` buttons |
+| **Codebase context** | Fetches imported/referenced files — catches cross-file bugs |
+| **Sequence diagrams** | Auto-generated Mermaid diagrams showing call flow changes |
+| **Severity tags** | 🔴 Critical · 🟠 Major · 🟡 Minor · 🔵 Nit |
+| **Confidence scoring** | Each finding rated high/medium/low — low-confidence findings suppressed |
+| **Incremental review** | On re-push, only reviews new commits (not the full PR again) |
+| **Resolution tracking** | Fixed findings marked ✅ ~~strikethrough~~ — even area-based fixes |
+
+### ⚡ Automation
+
+| Feature | Description |
+|---------|-------------|
+| **Auto-approval** | Safe PRs (small, docs/tests/config only) get approved instantly |
+| **Auto-fix commits** | `@criticai fix` pushes a commit with the suggested fix |
+| **PR descriptions** | Auto-generates title + body when PR has no description |
+| **Fix CI** | `@criticai fix-ci` analyzes failed checks and suggests fixes |
+| **Fallback model** | If GPT-5.6 Sol fails, Claude Opus 4.8 takes over seamlessly |
+
+### 🧠 Intelligence
+
+| Feature | Description |
+|---------|-------------|
+| **Custom rules** | `.criticai.yml` per repo — focus areas, team standards, ignore patterns |
+| **Knowledge base** | Dismissed findings tracked; won't re-flag intentional patterns |
+| **Research agent** | `@criticai ask` explores the full repo to answer questions |
+| **Noise control** | Only posts findings the model is confident about |
+
+### 💬 Conversational
+
+| Feature | Description |
+|---------|-------------|
+| **Update-in-place** | One review comment per PR, updated on each push |
+| **8 commands** | explain, fix, fix-ci, ask, ignore, review, help + free-form questions |
+| **Context-aware replies** | Bot reads the parent comment thread for context |
+
+---
+
+## Commands
+
+Reply to any CriticAI comment (or any PR comment) with:
+
+```
+@criticai explain         Deeper explanation of a finding
+@criticai explain 3       Explain finding #3 specifically
+@criticai fix             Push a fix commit for this finding
+@criticai fix-ci          Analyze CI failures and suggest a fix
+@criticai ask <question>  Research the codebase
+@criticai ignore          Dismiss this finding permanently
+@criticai review          Re-run the full review
+@criticai help            Show all commands
+```
+
+**Examples:**
+```
+@criticai ask where is the authentication middleware defined?
+@criticai ask what functions call handlePayment?
+@criticai explain why is this a security issue?
+@criticai fix
+```
+
+---
+
+## Configuration
+
+### `.criticai.yml`
+
+Drop this file in your repo root to customize behavior:
 
 ```yaml
-# Focus the review on these areas
+# What to focus on (prioritized in the review)
 focus:
   - security
   - error handling
-  - TypeScript strict mode
+  - TypeScript strict mode compliance
 
-# Custom rules to enforce
+# Team rules the reviewer must enforce
 rules:
-  - "All async functions must have try/catch"
-  - "Never use 'any' type — use 'unknown' if unsure"
+  - "All async functions must have try/catch error handling"
+  - "Never use 'any' type in TypeScript"
   - "API responses must be validated with zod schemas"
+  - "No console.log in production code"
 
-# Files to skip (glob patterns)
+# Files to skip entirely (glob patterns)
 ignore:
   - "**/*.test.ts"
   - "**/*.spec.ts"
   - "generated/**"
   - "*.lock"
 
-# Only report findings at this level or above
-# Options: critical, major, minor, nit
+# Minimum severity to report (critical | major | minor | nit)
 min_severity: minor
 
-# Auto-approve safe PRs (small, docs-only, tests-only)
+# Auto-approve safe PRs
 auto_approve: true
-auto_approve_max_lines: 50
-auto_approve_max_files: 8
+auto_approve_max_lines: 50    # Max lines changed for auto-approval
+auto_approve_max_files: 8     # Max files changed for auto-approval
+
+# Language for review output (overrides action input)
+# language: Spanish
 ```
 
----
-
-## Permissions
-
-```yaml
-permissions:
-  contents: read       # Required to fetch PR diff and file contents
-  pull-requests: write # Required to post comments and reviews
-```
-
-Both are mandatory. Listing any permission in `permissions:` sets unlisted
-scopes to `none`, so both lines must be present.
-
----
-
-## Inputs
+### Action Inputs
 
 | Input | Default | Description |
-|---|---|---|
-| `aws-access-key-id` | required | AWS IAM access key |
-| `aws-secret-access-key` | required | AWS IAM secret key |
-| `aws-region` | required | AWS region with Bedrock enabled |
-| `github-token` | required | `${{ secrets.GITHUB_TOKEN }}` |
-| `model` | `openai.gpt-5.6-terra` | Primary Bedrock model ID |
-| `fallback-model` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Fallback model (empty to disable) |
+|-------|---------|-------------|
+| `model` | `openai.gpt-5.6-sol` | Primary model (SWE-bench leader) |
+| `fallback-model` | `us.anthropic.claude-opus-4-8-20260501-v1:0` | Fallback (multi-file reasoning) |
 | `max-tokens` | `3072` | Max output tokens |
 | `mode` | `review` | `review` or `commands` |
-| `prompt` | (structured review prompt) | Custom prompt (replaces default entirely) |
 | `language` | `English` | Response language |
-| `title` | `Code Review` | Comment header title |
+| `title` | `Code Review` | Comment header |
 | `temperature` | `0.5` | Model temperature |
-| `top-p` | `0.9` | Top-p (ignored for Anthropic/OpenAI) |
 | `home-directory` | `''` | Path prefix filter (empty = all files) |
 
 ---
@@ -191,49 +234,41 @@ scopes to `none`, so both lines must be present.
 ## How It Works
 
 ```
-PR opened/pushed
-       │
-       ▼
-┌─────────────────┐
-│  Auto-approve?  │──yes──▶ ✅ Approve & skip review
-└────────┬────────┘
+  PR opened / pushed
+         │
+         ▼
+  ┌──────────────┐     ┌───────────────────────────┐
+  │ Auto-approve?│─yes─▶│ ✅ Approve + skip review  │
+  └──────┬───────┘     └───────────────────────────┘
          │ no
          ▼
-┌─────────────────┐
-│  Load rules +   │
-│  learnings      │
-└────────┬────────┘
+  ┌──────────────┐
+  │ Load config  │  .criticai.yml rules + learnings
+  └──────┬───────┘
          ▼
-┌─────────────────┐
-│  Fetch diff     │──incremental if re-review
-│  + context files│
-└────────┬────────┘
+  ┌──────────────┐
+  │ Fetch diff   │  Incremental if re-review
+  │ + context    │  Imports → referenced files fetched
+  └──────┬───────┘
          ▼
-┌─────────────────┐
-│  Generate PR    │──only on first review if body empty
-│  description    │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  AI Review      │──with rules, learnings, context
-│  (primary model)│
-└────────┬────────┘
+  ┌──────────────┐
+  │ GPT-5.6 Sol  │  Primary model
+  └──────┬───────┘
          │ fail?
          ▼
-┌─────────────────┐
-│  Fallback model │
-└────────┬────────┘
+  ┌──────────────┐
+  │Claude Opus4.8│  Automatic fallback
+  └──────┬───────┘
          ▼
-┌─────────────────┐
-│  Noise filter   │──suppress low-confidence findings
-└────────┬────────┘
+  ┌──────────────┐
+  │ Noise filter │  Suppress low-confidence findings
+  └──────┬───────┘
          ▼
-┌────────┴────────┐
-│  Post summary   │  Post inline    │  Generate
-│  comment        │  review         │  diagram
-│  (update in     │  comments       │  (mermaid)
-│  place)         │  + suggestions  │
-└─────────────────┴─────────────────┘
+  ┌──────────────────────────────────────────┐
+  │  Summary comment  │  Inline comments    │
+  │  (update-in-place)│  (suggestion blocks)│
+  │  + diagram        │  + confidence tags  │
+  └──────────────────────────────────────────┘
 ```
 
 ---
@@ -242,33 +277,48 @@ PR opened/pushed
 
 ```
 criticai/
-├── __init__.py              # Package (v2.0.0)
-├── auto_approve.py          # Safe PR detection + auto-approval
-├── ci_fix.py                # CI failure analysis
-├── commands.py              # @criticai command parser
-├── config.py                # Configuration from env vars
-├── context.py               # Referenced file fetching
-├── diagrams.py              # Mermaid sequence diagrams
-├── diff.py                  # Diff parsing + position mapping
-├── github.py                # GitHub API client
-├── inline.py                # Inline comment formatting + noise filter
-├── learnings.py             # Dismissed finding tracking
-├── pr_description.py        # PR description generation
-├── renderer.py              # Comment chrome/formatting
-├── research.py              # Codebase research agent
-├── review.py                # Review engine (orchestration)
-├── rules.py                 # .criticai.yml custom rules
+├── auto_approve.py     Safe PR detection + auto-approval
+├── ci_fix.py           CI failure analysis + fix suggestions
+├── commands.py         @criticai command parser (8 commands)
+├── config.py           Typed configuration from env vars
+├── context.py          Referenced file fetching (cross-file)
+├── diagrams.py         Mermaid sequence diagram generation
+├── diff.py             Diff parsing + GitHub position mapping
+├── github.py           GitHub REST API client
+├── inline.py           Inline comment formatting + noise filter
+├── learnings.py        Dismissed finding persistence
+├── pr_description.py   PR title/body generation
+├── renderer.py         Comment markdown formatting
+├── research.py         Codebase exploration agent
+├── review.py           Review orchestration + fallback
+├── rules.py            .criticai.yml config parsing
 └── providers/
-    ├── __init__.py
-    ├── base.py              # Provider detection + factory
-    ├── anthropic.py         # Claude via bedrock-runtime
-    ├── openai.py            # GPT-5.x via bedrock-mantle
-    └── amazon.py            # Titan via bedrock-runtime
-
-main.py                      # Review entrypoint
-comment_handler.py           # @criticai command entrypoint
-action.yml                   # GitHub Action definition
+    ├── base.py         Provider detection + factory
+    ├── anthropic.py    Claude (bedrock-runtime)
+    ├── openai.py       GPT-5.x (bedrock-mantle, SigV4)
+    └── amazon.py       Titan (bedrock-runtime)
 ```
+
+---
+
+## Comparison
+
+| | CriticAI | CodeRabbit | GitHub Copilot | Macroscope |
+|---|:---:|:---:|:---:|:---:|
+| **Cost** | **$0/user** | $24/user/mo | $19/user/mo | Usage-based |
+| Inline suggestions | ✅ | ✅ | ✅ | ✅ |
+| Cross-file context | ✅ | ✅ | ✅ | ✅ |
+| Auto-approval | ✅ | ❌ | ❌ | ✅ |
+| Noise control | ✅ | ❌ | ❌ | ✅ |
+| Research agent | ✅ | ❌ | ❌ | ✅ |
+| Auto-fix commits | ✅ | ✅ | ✅ | ❌ |
+| Fix CI failures | ✅ | ✅ | ❌ | ❌ |
+| Custom rules | ✅ | ✅ | ✅ | ✅ |
+| Knowledge base | ✅ | ✅ | ❌ | ❌ |
+| Sequence diagrams | ✅ | ✅ | ❌ | ❌ |
+| Incremental review | ✅ | ✅ | ✅ | ❌ |
+| Fallback model | ✅ | ❌ | ❌ | ❌ |
+| Self-hosted | ✅ | ❌ | ❌ | ❌ |
 
 ---
 
