@@ -3,6 +3,7 @@
 This is intentionally thin. All logic lives in the criticai/ package.
 """
 
+import os
 import sys
 
 from criticai.auto_approve import should_auto_approve, post_auto_approval
@@ -13,6 +14,7 @@ from criticai.diff import filter_diff, build_position_map, find_position, extrac
 from criticai.github import GitHubClient, extract_previous_findings, extract_reviewed_sha
 from criticai.inline import parse_model_output, filter_by_confidence
 from criticai.learnings import load_learnings, build_suppression_prompt
+from criticai.linters import run_linters, deduplicate_findings
 from criticai.pr_description import maybe_generate_description
 from criticai.renderer import render_comment
 from criticai.review import ReviewEngine
@@ -115,6 +117,14 @@ def main() -> None:
 
     # Parse into summary + structured inline findings
     review_output = parse_model_output(raw_output)
+
+    # Run static analysis linters on changed files and merge findings
+    linters_config = os.environ.get("INPUT_LINTERS", "auto")
+    linter_findings = run_linters(changed_files, linters_config)
+    if linter_findings:
+        review_output.findings = deduplicate_findings(
+            review_output.findings, linter_findings
+        )
 
     # Generate sequence diagram for the walkthrough
     diagram = generate_diagram(config, diff)

@@ -167,6 +167,14 @@ inputs:
     description: 'Home Directory In Your Project'
     required: false
     default: ''
+  linters:
+    description: >
+      Static analysis tools to run alongside the AI review. 'auto'
+      (default) auto-detects available linters in PATH and runs them on
+      matching changed files. 'none' disables linting. Or provide a
+      comma-separated list: 'ruff,eslint,shellcheck,golangci-lint,rubocop,clippy'.
+    required: false
+    default: 'auto'
   mode:
     description: 'Execution mode: "review" (default) runs the PR review, "commands" handles @criticai comment replies'
     required: false
@@ -205,3 +213,4 @@ runs:
         INPUT_TEMPERATURE: ${{ inputs.temperature }}
         INPUT_TOP_P: ${{ inputs.top-p }}
         INPUT_HOME_DIRECTORY: ${{ inputs.home-directory }}
+        INPUT_LINTERS: ${{ inputs.linters }}

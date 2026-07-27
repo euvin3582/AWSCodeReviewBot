@@ -282,6 +282,26 @@ failure is a 403, since a missing `contents: read` scope in the *calling*
 workflow is the most likely cause and isn't obvious from the generic
 `requests` error alone.
 
+## Multi-language static analysis (added 2026-07-26)
+
+Added `criticai/linters.py` — runs deterministic linters alongside the AI
+review. Supported tools: ruff (Python, installed automatically), eslint
+(JS/TS), shellcheck (shell), golangci-lint (Go), rubocop (Ruby), clippy
+(Rust). Auto-detected by file extension when the tool is in PATH; only
+analyzes files changed in the PR and only posts findings on lines visible
+in the diff. Linter findings merge with AI findings as `InlineFinding`
+objects (category "Lint", confidence "high"), deduplicated against AI
+findings that already cover the same file+line.
+
+New `linters` action input: `'auto'` (default), `'none'`, or a
+comma-separated list of specific tool names.
+
+Also removed the client-side license-key enforcement system
+(`criticai/license.py`, `generate_license.py`, `license-key` action input)
+in the same release. The BSL 1.1 license text handles usage restrictions
+legally; technical gating will come later via a GitHub App backend, not an
+embedded HMAC key.
+
 ## Maintenance
 
 Bedrock's model lineup changes over time (see

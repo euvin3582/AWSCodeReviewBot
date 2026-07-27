@@ -250,6 +250,73 @@ Both are required. GitHub sets unlisted scopes to `none` when you specify
 | `title` | `Code Review` | Review comment header |
 | `temperature` | `0.5` | Model temperature |
 | `home-directory` | `''` | Only review files under this path (empty = all) |
+| `linters` | `auto` | Static analysis: `auto`, `none`, or comma-separated list (see [Static Analysis](#static-analysis)) |
+
+---
+
+## Static Analysis
+
+CriticAI runs deterministic linters alongside the AI review for issues
+that don't require judgment — unused imports, type errors, shell script
+pitfalls, style violations. Linter findings appear as inline review
+comments (same as AI findings) but are tagged with category **Lint** to
+distinguish them.
+
+### How it works
+
+1. CriticAI detects which linters are available in the runner's `PATH`.
+2. Only files that actually changed in the PR are analyzed.
+3. Only findings on lines visible in the diff are posted (same constraint
+   as AI findings — you won't get noise about pre-existing issues).
+4. If the AI already flagged the same file+line, the linter finding is
+   deduplicated (AI takes priority since it has richer explanation).
+
+### Supported linters
+
+| Linter | Languages | Notes |
+|--------|-----------|-------|
+| **ruff** | Python | Installed automatically (included in requirements.txt) |
+| **eslint** | JS, TS, JSX, TSX | Must be in PATH — add `actions/setup-node` + `npm ci` to your workflow |
+| **shellcheck** | sh, bash | Pre-installed on `ubuntu-latest` runners |
+| **golangci-lint** | Go | Must be in PATH — use `golangci/golangci-lint-action` |
+| **rubocop** | Ruby | Must be in PATH — use `ruby/setup-ruby` + `gem install rubocop` |
+| **clippy** | Rust | Must be in PATH — use `actions-rust-lang/setup-rust-toolchain` |
+
+### Configuration
+
+The `linters` input controls which linters run:
+
+```yaml
+# Default: auto-detect available tools
+linters: 'auto'
+
+# Disable all linting (AI-only review)
+linters: 'none'
+
+# Run only specific linters
+linters: 'ruff,eslint,shellcheck'
+```
+
+To add linters beyond ruff (which is always available), install them in
+your workflow before the CriticAI step:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: actions/setup-node@v4
+    with:
+      node-version: 20
+  - run: npm ci            # installs eslint from your package.json
+  - uses: euvin3582/CriticAI@v1
+    with:
+      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      github-token: ${{ secrets.CRITIC_AI_TOKEN }}
+```
+
+CriticAI will automatically detect eslint in PATH and run it on any
+changed `.js`/`.ts`/`.tsx` files in the PR.
 
 ---
 
