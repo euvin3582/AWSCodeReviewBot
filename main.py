@@ -44,6 +44,9 @@ def main() -> None:
     # Fetch head SHA for labeling the comment
     head_sha = github.get_pr_head_sha()
 
+    # Extract changed file list (needed for auto-approval, linters, context)
+    changed_files = extract_changed_files(diff)
+
     # Load custom rules from .criticai.yml (if present)
     repo_rules = load_rules(github, config, head_sha)
     rules_prompt = ""
