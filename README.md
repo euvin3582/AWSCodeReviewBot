@@ -479,6 +479,149 @@ AWS secrets set at the org level are inherited by all repos automatically.
 
 ---
 
+## Deployment Guide
+
+This section covers the full production setup: IAM user, bot identity,
+org-level secrets, and the org-wide workflow.
+
+### AWS IAM user (one-time)
+
+Create a dedicated IAM user for CriticAI with the minimum required
+permissions. Do NOT use admin credentials.
+
+**User name:** `github-actions-bedrock-review` (or any name you prefer)
+
+**Policy** (inline, named `BedrockInvokeModelScoped`):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeInferenceProfile",
+      "Effect": "Allow",
+      "Action": "bedrock:InvokeModel",
+      "Resource": [
+        "arn:aws:bedrock:us-east-1:<ACCOUNT_ID>:inference-profile/us.anthropic.claude-opus-4-8-20260501-v1:0"
+      ]
+    },
+    {
+      "Sid": "InvokeUnderlyingFoundationModel",
+      "Effect": "Allow",
+      "Action": "bedrock:InvokeModel",
+      "Resource": [
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-8-20260501-v1:0",
+        "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-opus-4-8-20260501-v1:0",
+        "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-4-8-20260501-v1:0"
+      ]
+    },
+    {
+      "Sid": "InvokeMantleForOpenAiModels",
+      "Effect": "Allow",
+      "Action": "bedrock-mantle:CreateInference",
+      "Resource": "arn:aws:bedrock-mantle:us-east-1:<ACCOUNT_ID>:project/default"
+    },
+    {
+      "Sid": "AllowMarketplaceSubscribe",
+      "Effect": "Allow",
+      "Action": [
+        "aws-marketplace:Subscribe",
+        "aws-marketplace:Unsubscribe",
+        "aws-marketplace:ViewSubscriptions"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Replace `<ACCOUNT_ID>` with your AWS account ID. The `aws-marketplace`
+permission is required because bedrock-mantle auto-subscribes to OpenAI
+models on first invocation — without it, GPT-5.6 Sol calls fail with
+`access_denied`.
+
+Apply with:
+```bash
+aws iam put-user-policy \
+  --user-name github-actions-bedrock-review \
+  --policy-name BedrockInvokeModelScoped \
+  --policy-document file://iam-policy.json \
+  --profile admin
+```
+
+### Bot identity (posts as `criticai-bot` instead of `github-actions[bot]`)
+
+By default, comments post as `github-actions[bot]`. To get a branded bot
+identity:
+
+1. **Create a GitHub account** (e.g. `criticai-bot`). This is a
+   [machine account](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#3-account-requirements):
+   a human signs up and accepts ToS on its behalf, then it's used
+   exclusively for automation. Enable 2FA.
+
+2. **Invite as Write collaborator** on every repo where CriticAI runs
+   (or all repos in the org). Accept the invite from the bot account.
+
+3. **Generate a fine-grained PAT** while logged in as the bot account:
+   - Settings → Developer settings → Personal access tokens → Fine-grained
+   - Repository access: the repos CriticAI reviews (or "All repositories")
+   - Permissions: **Pull requests: Read and write**, **Issues: Read and write**
+
+4. **Add the PAT as an org-level secret** named `CRITIC_AI_TOKEN`:
+   - Organization Settings → Secrets and variables → Actions → New organization secret
+   - Visibility: All repositories
+
+5. **Use it in the workflow** instead of `GITHUB_TOKEN`:
+   ```yaml
+   github-token: ${{ secrets.CRITIC_AI_TOKEN }}
+   ```
+
+### Org-level secrets (summary)
+
+| Secret | Source | Description |
+|--------|--------|-------------|
+| `AWS_ACCESS_KEY_ID` | IAM user | Bedrock access key |
+| `AWS_SECRET_ACCESS_KEY` | IAM user | Bedrock secret key |
+| `AWS_REGION` | Your choice | e.g. `us-east-1` |
+| `CRITIC_AI_TOKEN` | Bot account PAT | Posts reviews as `criticai-bot` |
+
+All set at **org level** (visibility: all repos) so every repo inherits
+them. No per-repo secret configuration needed.
+
+### Org-wide workflow
+
+For GitHub organizations, place the workflow in the `.github` repo at
+`.github/workflows/criticai-code-review.yml` — it automatically applies
+to every repo in the org that doesn't have its own override:
+
+```yaml
+name: CriticAI Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: CriticAI Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: euvin3582/CriticAI@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          github-token: ${{ secrets.CRITIC_AI_TOKEN }}
+          mode: review
+```
+
+---
+
 ## License
 
 Business Source License 1.1 — see [LICENSE](LICENSE).
