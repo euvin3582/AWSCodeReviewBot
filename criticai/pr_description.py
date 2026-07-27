@@ -7,6 +7,7 @@ GitHub API.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -56,7 +57,6 @@ def maybe_generate_description(
         provider = get_provider(config.model, config)
         result = provider.invoke(config.model, system, prompt)
 
-        import json
         # Try to parse the JSON
         data = json.loads(result.strip())
         new_title = data.get("title", "").strip()
@@ -83,7 +83,7 @@ def maybe_generate_description(
             _update_pr(config, update_payload)
             print(f"PR description updated.")
 
-    except (json.JSONDecodeError, Exception) as e:
+    except Exception as e:
         print(f"Warning: could not generate PR description: {e}")
 
 
