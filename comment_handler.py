@@ -50,14 +50,6 @@ def main() -> None:
     # Load config and initialize clients
     config = Config.from_env()
 
-    # License check
-    from criticai.license import check_license, LicenseError
-    try:
-        check_license(config)
-    except LicenseError as e:
-        print(str(e))
-        sys.exit(1)
-
     github = GitHubClient(config)
 
     # Dispatch the command

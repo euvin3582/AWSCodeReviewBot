@@ -412,37 +412,10 @@ AWS secrets set at the org level are inherited by all repos automatically.
 
 ---
 
-## Pricing
-
-| Plan | Price | For |
-|------|-------|-----|
-| **Free** | $0 | Public repositories — full features, no limits |
-| **Pro** | Contact us | Private repos — license key per org |
-| **Enterprise** | Custom | Self-hosted, SLA, priority support, custom models |
-
-**Free tier** works on any public GitHub repository with zero configuration
-beyond AWS credentials. No key needed.
-
-**Pro/Enterprise** — add your license key as a GitHub Actions secret:
-
-```yaml
-# In your workflow:
-- uses: dogvatar-dog/CriticAI@v1
-  with:
-    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    aws-region: ${{ secrets.AWS_REGION }}
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    license-key: ${{ secrets.CRITICAI_LICENSE_KEY }}
-```
-
-Get a license: **euvin3582@gmail.com** · https://criticai.dev
-
----
-
 ## License
 
 Business Source License 1.1 — see [LICENSE](LICENSE).
 
-Source-available. Free for public repos. Commercial/private use requires
-a paid license. Converts to Apache 2.0 on 2026-07-26 + 4 years.
+Source-available. Free for public repos. Use on private repositories
+requires a commercial license — contact **euvin3582@gmail.com** or visit
+https://criticai.dev. Converts to Apache 2.0 on 2030-07-26.

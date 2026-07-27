@@ -13,7 +13,6 @@ from criticai.diff import filter_diff, build_position_map, find_position, extrac
 from criticai.github import GitHubClient, extract_previous_findings, extract_reviewed_sha
 from criticai.inline import parse_model_output, filter_by_confidence
 from criticai.learnings import load_learnings, build_suppression_prompt
-from criticai.license import check_license, LicenseError
 from criticai.pr_description import maybe_generate_description
 from criticai.renderer import render_comment
 from criticai.review import ReviewEngine
@@ -23,13 +22,6 @@ from criticai.rules import load_rules
 def main() -> None:
     # Load configuration from environment
     config = Config.from_env()
-
-    # License check — enforces public-repo-only for free tier
-    try:
-        check_license(config)
-    except LicenseError as e:
-        print(str(e))
-        sys.exit(1)
 
     # Initialize clients
     github = GitHubClient(config)
