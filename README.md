@@ -38,47 +38,52 @@ lock-in. Scale to 1,000 developers without a pricing conversation.
 
 **Time to first review: under 3 minutes.**
 
-### 1. Create the workflow file
+### 1. Create the workflow files
 
-Add `.github/workflows/criticai.yml` to any repo:
+Add two files to `.github/workflows/` in any repo:
+
+**`.github/workflows/criticai-code-review.yml`** — runs on every PR:
 
 ```yaml
 name: CriticAI
-
 on:
   pull_request:
     types: [opened, reopened, synchronize]
-  issue_comment:
-    types: [created]
-
 permissions:
   contents: read
   pull-requests: write
-
 jobs:
   review:
     name: CriticAI Code Review
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: dogvatar-dog/CriticAI@v1
+      - uses: euvin3582/CriticAI@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+```
 
+**`.github/workflows/criticai-commands.yml`** — runs when someone comments `@criticai`:
+
+```yaml
+name: CriticAI Commands
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
   commands:
     name: CriticAI Commands
-    if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request &&
-      contains(github.event.comment.body, '@criticai')
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '@criticai')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: dogvatar-dog/CriticAI@v1
+      - uses: euvin3582/CriticAI@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -86,6 +91,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: commands
 ```
+
+> **Why two files?** GitHub Actions shows a check for every job in a triggered
+> workflow — even skipped ones. A single file with both triggers would show
+> "CriticAI Commands: Skipped" on every PR. Splitting them eliminates that noise.
 
 ### 2. Set up AWS credentials
 
