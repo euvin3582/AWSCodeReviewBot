@@ -17,6 +17,7 @@ from criticai.learnings import load_learnings, build_suppression_prompt
 from criticai.linters import run_linters, deduplicate_findings
 from criticai.pr_description import maybe_generate_description
 from criticai.renderer import render_comment
+from criticai.resolve import resolve_outdated_threads
 from criticai.review import ReviewEngine
 from criticai.rules import load_rules
 
@@ -184,6 +185,9 @@ def main() -> None:
             print("No findings mapped to diff positions — inline review skipped.")
     else:
         print("No structured findings — inline review skipped.")
+
+    # Auto-resolve outdated threads from previous reviews (user pushed a fix)
+    resolve_outdated_threads(github, config)
 
 
 if __name__ == "__main__":
